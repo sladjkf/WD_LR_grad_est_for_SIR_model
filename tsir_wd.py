@@ -1,6 +1,243 @@
+"""
+tsir_wd.py
+Implements the discrete-time stochastic SIR model.
+- Weak derivative gradient estimator for total inf. wrt. v (prop. vacc)
+  Using common random numbers for variance reduction.
+- Likelihood-ratio gradient estimator for total inf. wrt. beta (contact rate)
+  Using control variates for variance reduction.
+
+"""
+
 import numpy as np
 import scipy.stats as stats
 
+
+
+def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
+    """
+    Simulate a path of the SIR model.
+
+    Parameters
+    ----------
+    N : int
+        Total population size.
+    v : float
+        Immunization rate. Between 0 and 1.
+    i0 : int
+        Number of initially infected individuals.
+    beta : float
+        Contact rate. Positive number.
+    T : int
+        Time horizon (number of iterations to run the sim for)
+    pop_seed : int
+        Seed value for the generation of the number initially immune individuals.
+    dyn_seed : int
+        Seed value for the generation of the SIR model's dynamics.
+
+    Returns
+    -------
+    orig_traj : np.array[int] of shape (T+1, 3)
+        The unperturbed sample path.
+    plus_traj : np.array[int] of shape (T+1, 3)
+        The sample path using the \mu^+ distribution for number of immune
+        individuals.
+    minus_traj : np.array[int] of shape (T+1, 3)
+        The sample path using the \mu^+ distribution for number of immune
+        individuals.
+
+    """
+    pop_rng = np.random.default_rng(pop_seed)
+    dyn_rng = np.random.default_rng(dyn_seed)
+
+    pop_U = pop_rng.random()
+    N_minus_i0 = N - i0
+    assert N_minus_i0 > 0
+
+    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
+    V_minus = stats.binom.ppf(q=pop_U, n=N_minus_i0 - 1, p=v)
+    V_plus = 1 + V_minus 
+    
+    orig_S = N - V
+    plus_S = N - V_plus
+    minus_S = N - V_minus
+
+    traj_shape = (T + 1, 3)
+    orig_traj = np.empty(traj_shape, dtype=int)
+    plus_traj = np.empty(traj_shape, dtype=int)
+    minus_traj = np.empty(traj_shape, dtype=int)
+
+    orig_traj[0] = [orig_S, i0, 0]
+    plus_traj[0] = [plus_S, i0, 0]
+    minus_traj[0] = [minus_S, i0, 0]
+
+    for i in range(T):
+        orig_next, plus_next, minus_next = step(
+            orig_traj[i], plus_traj[i], minus_traj[i], 
+            beta=beta, N=N, rng=dyn_rng
+        )
+        
+        orig_traj[i + 1] = orig_next
+        plus_traj[i + 1] = plus_next
+        minus_traj[i + 1] = minus_next
+
+    return orig_traj, plus_traj, minus_traj
+
+def draw_samples(N, i0, v, beta, T, N_samples, scrambler_seed, max_scrambler = 1e8, calc_LR = True):
+    """
+    Sample several simulation paths of the tSIR model.
+
+    Parameters
+    ----------
+    N : int
+        Total population size.
+    v : float
+        Immunization rate. Between 0 and 1.
+    i0 : int
+        Number of initially infected individuals.
+    beta : float
+        Contact rate. Positive number.
+    T : int
+        Time horizon (number of iterations to run the sim for)
+    N_samples : int
+        Number of sample paths to draw.
+    scrambler_seed : int
+        Random seed to use for the 'scrambler' 
+        (generates random seeds for each simulation path.)
+    max_scrambler : int, optional
+        Maximum seed value the scrambler can generate. The default is 1e8.
+    calc_LR : bool, optional
+        Whether to calculate the likelihood-ratios of the transition kernel
+        with respect to the contact rate. The default is True.
+
+    Returns
+    -------
+    orig_samples : np.array[int] of length N_samples
+        The total infected along the unperturbed sample paths.
+    plus_samples : np.array[int] of length N_samples
+        The total infected along the sample paths using the \mu^+ 
+        distribution for number initially immune.
+    minus_samples : np.array[int] of length N_samples
+        The total infected along the sample paths using the \mu^- 
+        distribution for number initially immune.
+    trajectories : np.array[int] of shape (T+1, N_samples)
+        The number infected at each timestep, for each sample path.
+        Rows are timestep indices and columns are sample indices.
+    score_samples : np.array[int] of shape (T, N_samples)
+        The score function of the transition kernel P(X_{j+1} | X_j)
+        with respect to the contact rate beta, evaluated at the
+        the sampled states.
+    """
+    orig_samples = np.empty(N_samples, dtype=int)
+    plus_samples = np.empty(N_samples, dtype=int)
+    minus_samples = np.empty(N_samples, dtype=int)
+
+    scrambler = np.random.default_rng(seed=scrambler_seed)
+    
+    if calc_LR:
+        trajectories = np.empty((T+1, N_samples), dtype=int)
+        score_samples = np.empty((T, N_samples), dtype=float)
+    else:
+        trajectories = None
+        score_samples = None
+    
+    for i in range(N_samples):
+        seed1 = scrambler.integers(0, max_scrambler)
+        seed2 = scrambler.integers(0, max_scrambler)
+
+        orig, plus, minus = tSIR_WD_CRN(
+            N=N, v=v, i0=i0, beta=beta, T=T, pop_seed=seed1, dyn_seed=seed2
+        )
+        
+        orig_samples[i] = np.sum(orig, axis=0)[1]
+        plus_samples[i] = np.sum(plus, axis=0)[1]
+        minus_samples[i] = np.sum(minus, axis=0)[1]
+
+        if calc_LR:
+            trajectories[:,i] = orig[:,1]
+            
+            for t in range(T):
+                step_score = LR_beta_term(orig[t+1], orig[t], beta, N)
+                score_samples[t, i] = step_score
+        
+    return orig_samples, plus_samples, minus_samples, trajectories, score_samples
+
+def grad_wrt_v(plus_samples, minus_samples, N, i0):
+    """
+    Calculate the weak-derivative estimator with respect to v
+    given the output of draw_samples.
+
+    Parameters
+    ----------
+    plus_samples : np.array[float]
+        Samples of the total infections, calculated under the distribution
+        using \mu^+ for the number initially immune.
+    minus_samples: np.array[float]
+        Samples of the total infections, calculated under the distribution
+        using \mu^- for the number initially immune.
+    N : int
+        Initial population size.
+    i0 : int
+        Number initially infected.
+
+    Returns
+    -------
+    tuple[float, float]
+        The 0th index is the sample mean of the gradient estimate.
+        The 1st index is the sample standard deviation of the gradient estimate.
+    """
+    mean_grad = (N - i0) * (plus_samples - minus_samples)
+    return np.mean(mean_grad), np.std(mean_grad, ddof=1)
+
+def grad_wrt_beta(trajectories, score_samples, T, N_samples):
+    """
+    Calculate the likelihood-ratio estimator with respect to beta
+    giiven the output of draw_samples.
+    
+    Parameters
+    ----------
+    trajectories : TYPE
+        DESCRIPTION.
+    score_samples : TYPE
+        DESCRIPTION.
+    T : TYPE
+        DESCRIPTION.
+    N_samples : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    baselines = np.mean(trajectories, axis=1) 
+    gradients = np.zeros(N_samples)
+    
+    for i in range(N_samples):
+        grad_i = 0.0
+        
+        # 2. Apply Causality + Baseline
+        # We iterate backwards to easily sum the "Future Infections"
+        future_cumulative_inf = 0.0
+        
+        for t in range(T-1, -1, -1):
+            # The "Reward" for this step is only what happens AFTER this step
+            # We subtract the baseline of that future step to reduce variance
+            reward_at_step_t = trajectories[t, i]
+            baseline_at_step_t = baselines[t]
+            
+            # Add to cumulative "Cost-to-Go"
+            # Centering: (Reward - Average_Reward)
+            centered_reward = reward_at_step_t - baseline_at_step_t
+            future_cumulative_inf += centered_reward
+            
+            # Gradient accumulator: Score_t * (Sum of Future Centered Rewards)
+            grad_i += score_samples[t, i] * future_cumulative_inf
+            
+        gradients[i] = grad_i
+
+    return np.mean(gradients), np.std(gradients, ddof=1)
+        
 def y_pmf(y, prev_state, beta, N):
     r = prev_state[1]
     if y < 0.0:
@@ -93,112 +330,6 @@ def step(state, state_plus, state_minus, beta, N, rng):
     
     return next_state, next_state_plus, next_state_minus
 
-
-def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
-    pop_rng = np.random.default_rng(pop_seed)
-    dyn_rng = np.random.default_rng(dyn_seed)
-
-    pop_U = pop_rng.random()
-    N_minus_i0 = N - i0
-    assert N_minus_i0 > 0
-
-    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
-    V_minus = stats.binom.ppf(q=pop_U, n=N_minus_i0 - 1, p=v)
-    V_plus = 1 + V_minus 
-    
-    orig_S = N - V
-    plus_S = N - V_plus
-    minus_S = N - V_minus
-
-    traj_shape = (T + 1, 3)
-    orig_traj = np.empty(traj_shape, dtype=int)
-    plus_traj = np.empty(traj_shape, dtype=int)
-    minus_traj = np.empty(traj_shape, dtype=int)
-
-    orig_traj[0] = [orig_S, i0, 0]
-    plus_traj[0] = [plus_S, i0, 0]
-    minus_traj[0] = [minus_S, i0, 0]
-
-    for i in range(T):
-        orig_next, plus_next, minus_next = step(
-            orig_traj[i], plus_traj[i], minus_traj[i], 
-            beta=beta, N=N, rng=dyn_rng
-        )
-        
-        orig_traj[i + 1] = orig_next
-        plus_traj[i + 1] = plus_next
-        minus_traj[i + 1] = minus_next
-
-    return orig_traj, plus_traj, minus_traj
-
-def draw_samples(N, i0, v, beta, T, N_samples, scrambler_seed, max_scrambler = 1e8, calc_LR = True):
-    orig_samples = np.empty(N_samples, dtype=int)
-    plus_samples = np.empty(N_samples, dtype=int)
-    minus_samples = np.empty(N_samples, dtype=int)
-
-    scrambler = np.random.default_rng(seed=scrambler_seed)
-    
-    if calc_LR:
-        trajectories = np.empty((T+1, N_samples), dtype=int)
-        score_samples = np.empty((T, N_samples), dtype=float)
-    else:
-        trajectories = None
-        score_samples = None
-    
-    for i in range(N_samples):
-        seed1 = scrambler.integers(0, max_scrambler)
-        seed2 = scrambler.integers(0, max_scrambler)
-
-        orig, plus, minus = tSIR_WD_CRN(
-            N=N, v=v, i0=i0, beta=beta, T=T, pop_seed=seed1, dyn_seed=seed2
-        )
-        
-        orig_samples[i] = np.sum(orig, axis=0)[1]
-        plus_samples[i] = np.sum(plus, axis=0)[1]
-        minus_samples[i] = np.sum(minus, axis=0)[1]
-
-        if calc_LR:
-            trajectories[:,i] = orig[:,1]
-            
-            for t in range(T):
-                step_score = LR_beta_term(orig[t+1], orig[t], beta, N)
-                score_samples[t, i] = step_score
-        
-    return orig_samples, plus_samples, minus_samples, trajectories, score_samples
-
-def grad_wrt_v(plus_samples, minus_samples, N, i0):
-    mean_grad = (N - i0) * (plus_samples - minus_samples)
-    return np.mean(mean_grad), np.std(mean_grad, ddof=1)
-
-def grad_wrt_beta(trajectories, score_samples, T, N_samples):
-    baselines = np.mean(trajectories, axis=1) 
-    gradients = np.zeros(N_samples)
-    
-    for i in range(N_samples):
-        grad_i = 0.0
-        
-        # 2. Apply Causality + Baseline
-        # We iterate backwards to easily sum the "Future Infections"
-        future_cumulative_inf = 0.0
-        
-        for t in range(T-1, -1, -1):
-            # The "Reward" for this step is only what happens AFTER this step
-            # We subtract the baseline of that future step to reduce variance
-            reward_at_step_t = trajectories[t, i]
-            baseline_at_step_t = baselines[t]
-            
-            # Add to cumulative "Cost-to-Go"
-            # Centering: (Reward - Average_Reward)
-            centered_reward = reward_at_step_t - baseline_at_step_t
-            future_cumulative_inf += centered_reward
-            
-            # Gradient accumulator: Score_t * (Sum of Future Centered Rewards)
-            grad_i += score_samples[t, i] * future_cumulative_inf
-            
-        gradients[i] = grad_i
-
-    return np.mean(gradients), np.std(gradients, ddof=1)
-        
 
 def estimators(orig_samples, plus_samples, minus_samples, N, i0, alpha = 0.9, eps = 1e-6):
     expr = lambda t: t + (1/(1-alpha)) * np.mean(np.maximum(0, orig_samples - t))
