@@ -1,9 +1,5 @@
 import numpy as np
 import scipy.stats as stats
-import matplotlib.pyplot as plt
-from scipy.optimize import minimize
-import scipy
-import scipy.special
 
 def y_pmf(y, prev_state, beta, N):
     r = prev_state[1]
