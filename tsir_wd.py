@@ -419,13 +419,13 @@ def draw_samples_random_params(N, i0,
     prior_a = beta_conf
     prior_b = beta/prior_a
 
+    sampled_v = np.ones(N_samples)*v
+    sampled_beta = np.ones(N_samples)*beta
     if random_v:
         sampled_v = stats.beta.rvs(a=prior_alpha, b=prior_beta, size=N_samples, random_state=v_seed)
     if random_beta:
+        print("sampled random beta")
         sampled_beta = stats.gamma.rvs(a=prior_a, scale=prior_b, size=N_samples, random_state=beta_seed)
-    if (not random_v) and (not random_beta):
-        sampled_v = np.ones(N_samples)*v
-        sampled_beta = np.ones(N_samples)*beta
     
     if calc_LR:
         trajectories = np.empty((T+1, N_samples), dtype=int)
