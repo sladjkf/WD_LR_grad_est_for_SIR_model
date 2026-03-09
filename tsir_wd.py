@@ -10,7 +10,7 @@ Implements the discrete-time stochastic SIR model.
 
 import numpy as np
 import scipy.stats as stats
-
+import multiprocess as mp
 
 
 def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
@@ -188,6 +188,21 @@ def grad_wrt_v(plus_samples, minus_samples, N, i0):
     mean_grad = (N - i0) * (plus_samples - minus_samples)
     return np.mean(mean_grad), np.std(mean_grad, ddof=1)
 
+def cvar_grad_wrt_v(orig_samples, plus_samples, minus_samples, N, i0, alpha = 0.95):
+    assert len(plus_samples) == len(minus_samples) == len(orig_samples)
+    n = len(plus_samples)
+    m = int(np.floor(np.sqrt(n)))
+    n_blocks = int(np.floor(n/m))
+    quantiles = [np.quantile(orig_samples[(i*m):((i+1)*m)], alpha) for i in range(n_blocks)]
+    grads = []
+    for i in range(n_blocks):
+        this_quantile = quantiles[((i+1) % n_blocks)]
+        this_est = np.mean(np.maximum(plus_samples - this_quantile,0) - np.maximum(minus_samples - this_quantile,0))
+        this_est = this_est*(1-alpha)**(-1)*(N-i0)
+        grads.append(this_est)
+    print(grads)
+    return np.mean(grads), np.std(grads, ddof=1)
+
 def grad_wrt_beta(trajectories, score_samples, T, N_samples):
     """
     Calculate the likelihood-ratio estimator with respect to beta
@@ -195,20 +210,23 @@ def grad_wrt_beta(trajectories, score_samples, T, N_samples):
     
     Parameters
     ----------
-    trajectories : TYPE
-        DESCRIPTION.
-    score_samples : TYPE
-        DESCRIPTION.
-    T : TYPE
-        DESCRIPTION.
-    N_samples : TYPE
-        DESCRIPTION.
+    trajectories : np.array[int] of shape (T+1, N_samples)
+        The number infected at each timestep, for each sample path.
+        Rows are timestep indices and columns are sample indices.
+    score_samples : np.array[int] of shape (T, N_samples)
+        The score function of the transition kernel P(X_{j+1} | X_j)
+        with respect to the contact rate beta, evaluated at the
+        the sampled states.
+    T : int
+        The length of the time horizon.
+    N_samples : int
+        How many simulations were run.
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
-
+    tuple[float, float]
+        The 0th index is the sample mean of the gradient estimate.
+        The 1st index is the sample standard deviation of the gradient estimate.
     """
     baselines = np.mean(trajectories, axis=1) 
     gradients = np.zeros(N_samples)
@@ -329,6 +347,169 @@ def step(state, state_plus, state_minus, beta, N, rng):
         ])
     
     return next_state, next_state_plus, next_state_minus
+
+def draw_samples_random_params(N, i0, 
+                               v, beta, v_conf, beta_conf, 
+                               T, 
+                               N_samples, scrambler_seed, 
+                               max_scrambler = 1e8, calc_LR = True,
+                               v_seed=12345, beta_seed=51932, cores=1, 
+                               random_beta=True, random_v=True):
+    """
+    Sample several simulation paths of the tSIR model, under a Beta
+    prior on v and a Gamma prior on beta.
+
+    Parameters
+    ----------
+    N : int
+        Total population size.
+    v : float
+        Immunization rate. Between 0 and 1.
+        Represents the mean of the prior distribution on v.
+    v_conf: float
+        Confidence parameter for the prior distribution.
+        Larger means less variance. Variance scales as O(1/v_var).
+    i0 : int
+        Number of initially infected individuals.
+    beta : float
+        Contact rate. Positive number.
+        Represents the mean of the prior distribution on beta.
+    beta_conf: float
+        Confidence parameter for the prior distribution of beta.
+        Larger means less variance. Variance scales as O(1/v_var).
+    T : int
+        Time horizon (number of iterations to run the sim for)
+    N_samples : int
+        Number of sample paths to draw.
+    scrambler_seed : int
+        Random seed to use for the 'scrambler' 
+        (generates random seeds for each simulation path.)
+    max_scrambler : int, optional
+        Maximum seed value the scrambler can generate. The default is 1e8.
+    calc_LR : bool, optional
+        Whether to calculate the likelihood-ratios of the transition kernel
+        with respect to the contact rate. The default is True.
+
+    Returns
+    -------
+    orig_samples : np.array[int] of length N_samples
+        The total infected along the unperturbed sample paths.
+    plus_samples : np.array[int] of length N_samples
+        The total infected along the sample paths using the \mu^+ 
+        distribution for number initially immune.
+    minus_samples : np.array[int] of length N_samples
+        The total infected along the sample paths using the \mu^- 
+        distribution for number initially immune.
+    trajectories : np.array[int] of shape (T+1, N_samples)
+        The number infected at each timestep, for each sample path.
+        Rows are timestep indices and columns are sample indices.
+    score_samples : np.array[int] of shape (T, N_samples)
+        The score function of the transition kernel P(X_{j+1} | X_j)
+        with respect to the contact rate beta, evaluated at the
+        the sampled states.
+    """
+    orig_samples = np.empty(N_samples, dtype=int)
+    plus_samples = np.empty(N_samples, dtype=int)
+    minus_samples = np.empty(N_samples, dtype=int)
+
+    scrambler = np.random.default_rng(seed=scrambler_seed)
+
+    prior_alpha = v_conf*v
+    prior_beta = v_conf*(1-v)
+    prior_a = beta_conf
+    prior_b = beta/prior_a
+
+    if random_v:
+        sampled_v = stats.beta.rvs(a=prior_alpha, b=prior_beta, size=N_samples, random_state=v_seed)
+    if random_beta:
+        sampled_beta = stats.gamma.rvs(a=prior_a, scale=prior_b, size=N_samples, random_state=beta_seed)
+    if (not random_v) and (not random_beta):
+        sampled_v = np.ones(N_samples)*v
+        sampled_beta = np.ones(N_samples)*beta
+    
+    if calc_LR:
+        trajectories = np.empty((T+1, N_samples), dtype=int)
+        score_samples = np.empty((T, N_samples), dtype=float)
+    else:
+        trajectories = None
+        score_samples = None
+
+    def inner_loop(i, s1, s2, n_val, i0_val, t_val, calc_lr_val, v_val, beta_val, s_v, s_beta):
+        '''
+        i : loop index
+        s1 : population seed
+        s2 : dynamics seed
+        n_val: population size
+        i0 : initial infected
+        t_val : time horizon
+        calc_lr_val : whether or not to calculate lr gradient
+        v_val : mean value for posterior of dist
+        beta_val : mean value for posterior
+        s_v : sampled v
+        s_beta : sampled beta
+        '''
+        orig, plus, minus = tSIR_WD_CRN(
+            N=n_val, v=s_v, i0=i0_val, beta=s_beta, T=t_val, pop_seed=s1, dyn_seed=s2
+        )
+        res_orig = np.sum(orig, axis=0)[1]
+        res_plus = np.sum(plus, axis=0)[1]
+        res_minus = np.sum(minus, axis=0)[1]
+
+        traj = None
+        scores = None
+        
+        if calc_lr_val:
+            traj = orig[:, 1]
+            # Calculate scores as a list or numpy array
+            scores = [LR_beta_term(orig[t+1], orig[t], s_beta, n_val) for t in range(t_val)]
+            
+        return res_orig, res_plus, res_minus, traj, scores
+        
+    if cores > 1:
+        # 1. Prepare seeds
+        seeds1 = scrambler.integers(0, max_scrambler, size=N_samples)
+        seeds2 = scrambler.integers(0, max_scrambler, size=N_samples)
+        
+        # 2. Package all arguments into a list of tuples for starmap
+        # Note: We pass everything the function needs to avoid global scope issues
+        tasks = [
+            (i, seeds1[i], seeds2[i], N, i0, T, calc_LR, v, beta, sampled_v[i], sampled_beta[i]) 
+            for i in range(N_samples)
+        ]
+
+        with mp.Pool(cores) as pool:
+            results = pool.starmap(inner_loop, tasks)
+
+        # 3. Unpack results into your pre-allocated arrays
+        for i, res in enumerate(results):
+            orig_samples[i], plus_samples[i], minus_samples[i], traj, scores = res
+            
+            if calc_LR:
+                trajectories[:, i] = traj
+                score_samples[:, i] = scores
+    else:
+        for i in range(N_samples):
+            seed1 = scrambler.integers(0, max_scrambler)
+            seed2 = scrambler.integers(0, max_scrambler)
+            this_beta = sampled_beta[i]
+            this_v = sampled_v[i]
+            orig, plus, minus = tSIR_WD_CRN(
+                N=N, v=this_v, i0=i0, beta=this_beta, T=T, pop_seed=seed1, dyn_seed=seed2
+            )
+            
+            orig_samples[i] = np.sum(orig, axis=0)[1]
+            plus_samples[i] = np.sum(plus, axis=0)[1]
+            minus_samples[i] = np.sum(minus, axis=0)[1]
+    
+            if calc_LR:
+                trajectories[:,i] = orig[:,1]
+                
+                for t in range(T):
+                    step_score = LR_beta_term(orig[t+1], orig[t], beta, N)
+                    score_samples[t, i] = step_score
+        
+    return orig_samples, plus_samples, minus_samples, trajectories, score_samples
+
 
 
 def estimators(orig_samples, plus_samples, minus_samples, N, i0, alpha = 0.9, eps = 1e-6):
