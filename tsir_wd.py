@@ -203,7 +203,7 @@ def cvar_grad_wrt_v(orig_samples, plus_samples, minus_samples, N, i0, alpha = 0.
     print(grads)
     return np.mean(grads), np.std(grads, ddof=1)
 
-def grad_wrt_beta(trajectories, score_samples, T, N_samples):
+def grad_wrt_beta(trajectories, score_samples, T, N_samples, avg=True):
     """
     Calculate the likelihood-ratio estimator with respect to beta
     giiven the output of draw_samples.
@@ -253,8 +253,10 @@ def grad_wrt_beta(trajectories, score_samples, T, N_samples):
             grad_i += score_samples[t, i] * future_cumulative_inf
             
         gradients[i] = grad_i
-
-    return np.mean(gradients), np.std(gradients, ddof=1)
+    if avg:
+        return np.mean(gradients), np.std(gradients, ddof=1)
+    else:
+        return gradients
         
 def y_pmf(y, prev_state, beta, N):
     r = prev_state[1]
@@ -354,7 +356,8 @@ def draw_samples_random_params(N, i0,
                                N_samples, scrambler_seed, 
                                max_scrambler = 1e8, calc_LR = True,
                                v_seed=12345, beta_seed=51932, cores=1, 
-                               random_beta=True, random_v=True):
+                               random_beta=True, random_v=True, 
+                               set_as_threshold = None, return_params=False):
     """
     Sample several simulation paths of the tSIR model, under a Beta
     prior on v and a Gamma prior on beta.
@@ -424,8 +427,12 @@ def draw_samples_random_params(N, i0,
     if random_v:
         sampled_v = stats.beta.rvs(a=prior_alpha, b=prior_beta, size=N_samples, random_state=v_seed)
     if random_beta:
-        print("sampled random beta")
         sampled_beta = stats.gamma.rvs(a=prior_a, scale=prior_b, size=N_samples, random_state=beta_seed)
+    if set_as_threshold is not None:
+        if set_as_threshold == "beta":
+            sampled_beta = 1/(1-sampled_v)
+        elif set_as_threshold == "v":
+            sampled_v = 1 - 1/sampled_beta
     
     if calc_LR:
         trajectories = np.empty((T+1, N_samples), dtype=int)
@@ -507,8 +514,10 @@ def draw_samples_random_params(N, i0,
                 for t in range(T):
                     step_score = LR_beta_term(orig[t+1], orig[t], beta, N)
                     score_samples[t, i] = step_score
-        
-    return orig_samples, plus_samples, minus_samples, trajectories, score_samples
+    if return_params:
+        return orig_samples, plus_samples, minus_samples, trajectories, score_samples, sampled_v, sampled_beta
+    else:
+        return orig_samples, plus_samples, minus_samples, trajectories, score_samples
 
 
 
