@@ -52,10 +52,18 @@ def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
     pop_U = pop_rng.random()
     N_minus_i0 = N - i0
     assert N_minus_i0 > 0
-
+    
+    # Binomial initial condition
     V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
     V_minus = stats.binom.ppf(q=pop_U, n=N_minus_i0 - 1, p=v)
     V_plus = 1 + V_minus 
+    
+    # Linear interpolation condition
+    # immune = np.floor(N*v)
+    # immune_p = 1 - N*v + immune
+    # V = (immune)*int(pop_U <= immune_p) + (immune+1)*int(pop_U > immune_p)
+    # V_minus = immune
+    # V_plus = immune + 1
     
     orig_S = N - V
     plus_S = N - V_plus

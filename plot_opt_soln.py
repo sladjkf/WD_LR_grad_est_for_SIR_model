@@ -131,10 +131,6 @@ plt.title(r'Comparison of normalized cost: uncertainty in $\beta$ vs. known $\be
 plt.savefig('output/norm_cost_beta_conf_10.pdf')
 # %%
 
-df1 = pd.read_csv('output/cv_star_vs_beta_fixed.csv')
-df2 = pd.read_csv('output/cv_star_vs_beta_beta_conf_10.csv')
-
-
 df1 = pd.read_csv('output/cv_star_vs_beta_2_10_fixed.csv')
 df2 = pd.read_csv('output/cv_star_vs_beta_2_10_beta_conf_10.csv')
 
