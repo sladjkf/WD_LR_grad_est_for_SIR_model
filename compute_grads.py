@@ -13,6 +13,50 @@ import multiprocess as mp
 import pandas as pd
 
 
+# %%
+def no_vrt(v,beta):
+    N = 1000
+    i0 = 1
+    N_samples = 10000
+    T = 10
+    scrambler_seed = 12345677
+    orig, plus, _, traj, score_samples = draw_samples(
+        N, i0, v, beta, T, N_samples, scrambler_seed
+    )
+    scrambler_seed = 8684838
+    orig, _, minus, traj, score_samples = draw_samples(
+        N, i0, v, beta, T, N_samples, scrambler_seed
+    )
+    v_grads =(N-i0) * (plus - minus)
+    v_mean = np.mean(v_grads)
+    v_sd = np.std(v_grads, ddof=1)
+    beta_grads = orig * np.sum(score_samples, axis=0)
+    beta_mean = np.mean(beta_grads)
+    beta_sd = np.mstd(beta_grads, ddof=1)
+    return {
+        'v': v,
+        'beta': beta,
+        'N': N,
+        'i0': i0,
+        'N_samples': N_samples,
+        'T': T,
+        'v_mean': v_mean,
+        'v_sd': v_sd,
+        'beta_se': v_sd/np.sqrt(N_samples),
+        'beta_mean': beta_mean,
+        'beta_sd': beta_sd,
+        'beta_se': beta_sd/np.sqrt(N_samples)
+    }
+vs_to_try = [0.1, 0.6]
+betas_to_try = [2, 4]
+tasks = [(v,beta) for beta in betas_to_try for v in vs_to_try]
+with mp.Pool(4) as pool:
+    result = pool.starmap(lambda v,beta: no_vrt(v,beta), tasks)
+# %%
+
+import pandas as pd
+df = pd.DataFrame(result)
+df.to_csv('output/no_vrt_table.csv', index=False)
 # In[2]:
 
 
@@ -84,9 +128,11 @@ df
 
 
 betas_to_try = np.linspace(2,4,21)
+betas_to_try = [4]
 #vs_to_try = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
-vs_to_try = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
-N = 1000
+#vs_to_try = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
+vs_to_try = np.linspace(0,1)
+N = 100000
 i0 = 1
 v = 0.1
 beta = 5
@@ -111,7 +157,7 @@ df['N_samples'] = N_samples
 df['N'] = N
 df['T'] = T
 df['i0'] = i0
-df.to_csv('big_run_results_2.csv', index=None)
+#df.to_csv('big_run_results_2.csv', index=None)
 
 
 # In[112]:

@@ -141,3 +141,25 @@ plt.plot(np.linspace(0,1), dv[:,37])
 # %%
 
 plt.plot(db[:,25])
+
+# %%
+
+import pandas as pd
+df = pd.read_csv('output/big_run_combined.csv')
+result = {'beta':[], 
+          'v':[], 
+          'N':[], 
+          'size':[], 
+          'dv':[], 
+          'db':[]
+          }
+for index, row in df.iterrows():
+    size, db, dv = size_deriv_corrected(row['beta'],row['v'])*row['N']
+    result['beta'].append(row['beta'])
+    result['v'].append(row['v'])
+    result['size'].append(size)
+    result['N'].append(int(row['N']))
+    result['dv'].append(dv)
+    result['db'].append(db)
+result = pd.DataFrame(result)
+result.to_csv('output/semi_analytic_result.csv', index=None)

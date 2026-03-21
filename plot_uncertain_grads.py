@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import matplotlib.pyplot as plt
-plt.rcParams.update({'font.size': 15})
+plt.rcParams.update({'font.size': 17})
 
 
 # %%
@@ -54,7 +54,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # 1. Load and process first dataset
-df1 = pd.read_csv("parametric_uncertainty_results.csv")
+df1 = pd.read_csv("output/parametric_uncertainty/parametric_uncertainty_results.csv")
 selection1 = df1[(df1['beta_conf'] == 10) & (df1['v_conf'] == 10)]
 beta1 = np.unique(selection1['beta'])
 v1 = np.unique(selection1['v'])
@@ -69,149 +69,66 @@ v2 = np.unique(selection2['v'])
 # Based on your snippet: using 'beta_mean' for the second plot's gradient
 beta_grad2 = np.abs(np.array(selection2['beta_mean']).reshape(len(v2), len(beta2)))
 
+df3 = pd.read_csv("output/semi_analytic_result.csv")
+beta3 = np.unique(df3['beta'])
+v3 = np.unique(df3['v'])
+beta_grad3 = np.abs(np.array(df3['db'])).reshape(len(v3), len(beta3))
+
 # Define critical curves
 crit_curve_v1 = 1 - 1/beta1
 crit_curve_v2 = 1 - 1/beta2
+crit_curve_v3 = 1 - 1/beta3
 
 # 3. Calculate shared color scale
-global_min = min(beta_grad1.min(), beta_grad2.min())
-global_max = max(beta_grad1.max(), beta_grad2.max())
+global_min = min([beta_grad1.min(), beta_grad2.min(), beta_grad3.min()])
+global_max = max(beta_grad1.max(), beta_grad2.max(), beta_grad3.max())
 levels = np.linspace(0, 600, 25) # Ensures identical contours
 
 # 4. Create Side-by-Side Plot
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 8))
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 8))
 
+cmap = 'magma'
 # Plot Left: Parametric Uncertainty
-cf1 = ax1.contourf(beta1, v1, beta_grad1, levels=levels, cmap="magma")
-ax1.plot(beta1, crit_curve_v1, color="green", linewidth=3, linestyle="--")
-title_line1 = r"$E_{v,\beta}\left[ \frac{\partial}{\partial \beta} E[Z(v,\beta)] \right]$ vs. v, $\beta$"
-title_line2 = r"(Sensitivity wrt. $\beta$ under uncertainty in $\beta, v)$"
-ax1.set_title(title_line1 + "\n" + title_line2)
-ax1.set_xlabel(r"$\beta$ (Mean of input distr.)")
-ax1.set_ylabel("v (Mean of input distr.)")
+cf1 = ax3.contourf(beta1, v1, beta_grad1, levels=levels, cmap=cmap)
+ax3.plot(beta1, crit_curve_v1, color="red", linewidth=3, linestyle="--", label = r"$R_{eff} =1$")
+title_line1 = r"Sensitivity of final size wrt. $\beta$"
+title_line2 = r"Gradient estimator, uncertain parameters"
+ax3.set_title(title_line1 + "\n" + title_line2)
+ax3.set_xlabel(r"$\beta$ (Mean of input distr.)")
+ax3.set_ylabel("v (Mean of input distr.)")
+ax3.legend()
 
 # Plot Right: Big Run Combined
-cf2 = ax2.contourf(beta2, v2, beta_grad2, levels=levels, cmap="magma")
-ax2.plot(beta2, crit_curve_v2, color="green", linewidth=3, label=r"$R_0 = 1$", linestyle="--")
-title_line1 = r"$\frac{\partial}{\partial \beta} E[Z(v,\beta)]$ vs. v, $\beta$"
-title_line2 = r"(Sensitivity wrt. $\beta$ for fixed and known $\beta, v)$"
+cf2 = ax2.contourf(beta2, v2, beta_grad2, levels=levels, cmap=cmap)
+ax2.plot(beta2, crit_curve_v2, color="red", linewidth=3, label = r"$R_{eff} =1$", linestyle="--")
+title_line1 = r"Sensitivity of final size wrt. $\beta$"
+title_line2 = r"Gradient estimator"
 ax2.set_title(title_line1 + "\n" + title_line2)
 ax2.set_ylabel(r"v (fixed value)")
 ax2.set_xlabel(r"$\beta$ (fixed value)")
+ax2.legend()
+
+cf3 = ax1.contourf(beta3, v3, beta_grad3, levels=levels, cmap=cmap)
+ax1.plot(beta2, crit_curve_v2, color="red", linewidth=3, label = r"$R_{eff} =1$", linestyle="--")
+title_line1 = r"Sensitivity of final size wrt. $\beta$"
+title_line2 = r"Final size equation"
+ax1.set_title(title_line1 + "\n" + title_line2)
+ax1.set_ylabel(r"v (fixed value)")
+ax1.set_xlabel(r"$\beta$ (fixed value)")
+ax1.legend()
 
 # Add a single colorbar for both plots
-cbar = fig.colorbar(cf2, ax=[ax1, ax2], orientation='horizontal', fraction=0.1, pad=-0.35)
+cbar = fig.colorbar(cf2, ax=[ax1, ax2, ax3], orientation='horizontal', fraction=0.1, pad=-0.35)
 cbar.set_label('Magnitude')
 
 plt.tight_layout()
-plt.savefig("output/compare_beta_beta_conf_10_v_conf_10.pdf")
 plt.legend()
+plt.savefig("output/compare_dbeta_contour.pdf")
 plt.show()
 
 
-# %%
 
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
-# 1. Load and process first dataset (Parametric Uncertainty)
-df1 = pd.read_csv("parametric_uncertainty_results.csv")
-selection1 = df1[(df1['beta_conf'] == 10) & (df1['v_conf'] == 10)]
-beta1 = np.unique(selection1['beta'])
-v1 = np.unique(selection1['v'])
-# Use v_grad for the first plot
-v_grad1 = np.abs(np.array(selection1['v_grad']).reshape(len(v1), len(beta1)))
-
-# 2. Load and process second dataset (Big Run)
-df2 = pd.read_csv("output/big_run_combined.csv")
-selection2 = df2 
-beta2 = np.unique(selection2['beta'])
-v2 = np.unique(selection2['v'])
-# Use v_mean for the second plot (following your variable mapping)
-v_grad2 = np.abs(np.array(selection2['v_mean']).reshape(len(v2), len(beta2)))
-
-# Critical curve: v = 1 - 1/beta
-crit_curve_v1 = 1 - 1/beta1
-crit_curve_v2 = 1 - 1/beta2
-
-# 3. Calculate shared color scale for v_grad
-v_min = min(v_grad1.min(), v_grad2.min())
-v_max = max(v_grad1.max(), v_grad2.max())
-levels = np.linspace(v_min, v_max, 20)
-
-# 4. Create Side-by-Side Plot
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
-
-# Left Plot: v_grad from results
-cf1 = ax1.contourf(beta1, v1, v_grad1, levels=levels)
-ax1.plot(beta1, crit_curve_v1, color="red", linewidth=2, label="Critical Curve")
-ax1.set_title("Parametric Uncertainty (|v_grad|)")
-ax1.set_xlabel("beta")
-ax1.set_ylabel("v")
-
-# Right Plot: v_mean from big run
-cf2 = ax2.contourf(beta2, v2, v_grad2, levels=levels)
-ax2.plot(beta2, crit_curve_v2, color="red", linewidth=2)
-ax2.set_title("Big Run Combined (|v_mean|)")
-ax2.set_xlabel("beta")
-
-# Add shared colorbar
-cbar = fig.colorbar(cf2, ax=[ax1, ax2], orientation='vertical', fraction=0.54, pad=.3)
-cbar.set_label('v Gradient Magnitude')
-
-plt.tight_layout()
-plt.savefig("v_grad_comparison_plot.png")
-plt.show()
-
-# %%
-
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-
-# 1. Load and process first dataset
-df1 = pd.read_csv("parametric_uncertainty_results.csv")
-selection1 = df1[(df1['beta_conf'] == 1000) & (df1['v_conf'] == 1000)]
-beta1 = np.unique(selection1['beta'])
-v1 = np.unique(selection1['v'])
-size1 = np.array(selection1['total_size_mean']).reshape(len(v1), len(beta1))
-
-# 2. Load and process second dataset
-df2 = pd.read_csv("output/big_run_combined.csv")
-# Note: Ensure 'total_size_mean' exists in this CSV
-selection2 = df2 
-beta2 = np.unique(selection2['beta'])
-v2 = np.unique(selection2['v'])
-size2 = np.array(selection2['total_size_mean']).reshape(len(v2), len(beta2))
-
-# 3. Calculate shared color scale for Total Size
-s_min = min(size1.min(), size2.min())
-s_max = max(size1.max(), size2.max())
-levels = np.linspace(s_min, s_max, 25) # Slightly more levels for smoother size transitions
-
-# 4. Create Side-by-Side Plot
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
-
-# Plot Left: Parametric Uncertainty
-cf1 = ax1.contourf(beta1, v1, size1, levels=levels, cmap='viridis')
-ax1.plot(beta1, 1 - 1/beta1, color="red", linewidth=2, label="Critical Curve")
-ax1.set_title("Parametric Uncertainty (Total Size)")
-ax1.set_xlabel("beta")
-ax1.set_ylabel("v")
-
-# Plot Right: Big Run Combined
-cf2 = ax2.contourf(beta2, v2, size2, levels=levels, cmap='viridis')
-ax2.plot(beta2, 1 - 1/beta2, color="red", linewidth=2)
-ax2.set_title("Big Run Combined (Total Size)")
-ax2.set_xlabel("beta")
-
-# Add a single colorbar
-cbar = fig.colorbar(cf2, ax=[ax1, ax2], orientation='vertical', fraction=0.03, pad=0.04)
-cbar.set_label('Total Size Mean')
-
-plt.tight_layout()
-plt.show()
 
 # %%
 
@@ -222,8 +139,9 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 
 # 1. Load Data
-df1 = pd.read_csv("parametric_uncertainty_results.csv")
+df1 = pd.read_csv("output/parametric_uncertainty/parametric_uncertainty_results.csv")
 df2 = pd.read_csv("output/big_run_combined.csv")
+df3 = pd.read_csv("output/semi_analytic_result.csv")
 
 # 2. Process Dataset 1
 selection1 = df1[(df1['beta_conf'] == 10) & (df1['v_conf'] == 10)]
@@ -237,6 +155,10 @@ beta2 = np.unique(selection2['beta'])
 v2 = np.unique(selection2['v'])
 v_grad2 = np.abs(np.array(selection2['v_mean']).reshape(len(v2), len(beta2)))
 
+beta3 = np.unique(df3['beta'])
+v3 = np.unique(df3['v'])
+v_grad3 = np.abs(np.array(df3['dv'])).reshape(len(v3), len(beta3))
+
 # --- APPLY GAUSSIAN SMOOTHING ---
 # Sigma controls the "blur". Start small (e.g., 1.0) to avoid over-smoothing.
 v_grad1_smooth = gaussian_filter(v_grad1, sigma=1)
@@ -245,39 +167,52 @@ v_grad2_smooth = gaussian_filter(v_grad2, sigma=1)
 #v_grad2_smooth = v_grad2
 
 # 4. Global Scale & Critical Curves
-v_min = min(v_grad1_smooth.min(), v_grad2_smooth.min())
-v_max = max(v_grad1_smooth.max(), v_grad2_smooth.max())
-levels = np.linspace(0, 1500, 31)
+v_min = min(v_grad1_smooth.min(), v_grad2_smooth.min(), v_grad3.min())
+v_max = max(v_grad1_smooth.max(), v_grad2_smooth.max(), v_grad3.max())
+print(round(v_max,-1))
+levels = np.linspace(0, 1550 , 32)
 
 crit_curve1 = 1 - 1/beta1
 crit_curve2 = 1 - 1/beta2
 
 # 5. Plotting
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 8))
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 8))
 
+cmap = 'viridis'
 # Left: Smoothed v_grad
-cf1 = ax1.contourf(beta1, v1, v_grad1_smooth, levels=levels, cmap='magma')
-ax1.plot(beta1, crit_curve1, color="green", linewidth=3, linestyle='--')
-title_line1 = r"$E_{v,\beta}\left[ \frac{\partial}{\partial v} E[Z(v,\beta)] \right]$ vs. v, $\beta$"
-title_line2 = r"(Sensitivity wrt. $v$ under uncertainty in $\beta, v)$"
-ax1.set_title(title_line1 + "\n" + title_line2)
-ax1.set_xlabel(r"$\beta$ (Mean of input distr.)")
-ax1.set_ylabel("v (Mean of input distr.)")
+cf1 = ax3.contourf(beta1, v1, v_grad1_smooth, levels=levels, cmap=cmap)
+ax3.plot(beta1, crit_curve1, color="red", linewidth=3, linestyle='--', label=r"$R_{eff} = 1$")
+title_line1 = r"Sensitivity of final size wrt. $v$"
+title_line2 = "Gradient estimator, uncertain parameters"
+ax3.set_title(title_line1 + "\n" + title_line2)
+ax3.set_xlabel(r"$\beta$ (Mean of input distr.)")
+ax3.set_ylabel("v (Mean of input distr.)")
+ax3.legend()
 
 # Right: Smoothed v_mean
-cf2 = ax2.contourf(beta2, v2, v_grad2_smooth, levels=levels, cmap='magma')
-ax2.plot(beta2, crit_curve2, color="green", linewidth=3, linestyle='--', label=r"$R_0 = 1$")
-title_line1 = r"$\frac{\partial}{\partial v} E[Z(v,\beta)]$ vs. v, $\beta$"
-title_line2 = r"(Sensitivity wrt. $v$ under uncertainty in $\beta, v)$"
+title_line1 = r"Sensitivity of final size wrt. $v$"
+title_line2 = "Gradient estimator"
+cf2 = ax2.contourf(beta2, v2, v_grad2_smooth, levels=levels, cmap=cmap)
+ax2.plot(beta2, crit_curve2, color="red", linewidth=3, linestyle='--', label=r"$R_{eff} = 1$")
 ax2.set_title(title_line1 + "\n" + title_line2)
 ax2.set_ylabel(r"v (fixed value)")
 ax2.set_xlabel(r"$\beta$ (fixed value)")
+ax2.legend()
+
+title_line1 = r"Sensitivity of final size wrt. $v$"
+title_line2 = "Final size equation"
+cf3 = ax1.contourf(beta3, v3, v_grad3, levels=levels, cmap=cmap)
+ax1.plot(beta2, crit_curve2, color="red", linewidth=3, linestyle='--', label=r"$R_{eff} = 1$")
+ax1.set_title(title_line1 + "\n" + title_line2)
+ax1.set_ylabel(r"v (fixed value)")
+ax1.set_xlabel(r"$\beta$ (fixed value)")
+ax1.legend()
 
 # Colorbar
-cbar = fig.colorbar(cf2, ax=[ax1, ax2], orientation='horizontal', fraction=0.1, pad=-0.35)
+cbar = fig.colorbar(cf2, ax=[ax1, ax2, ax3], orientation='horizontal', fraction=0.1, pad=-0.35)
 cbar.set_label('Magnitude')
 
 plt.tight_layout()
-plt.savefig("output/compare_v_beta_conf_10_v_conf_10_smoothing_sigma_1.pdf")
+plt.savefig("output/compare_dv_contourplot.pdf")
 plt.legend()
 plt.show()
