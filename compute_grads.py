@@ -32,7 +32,7 @@ def no_vrt(v,beta):
     v_sd = np.std(v_grads, ddof=1)
     beta_grads = orig * np.sum(score_samples, axis=0)
     beta_mean = np.mean(beta_grads)
-    beta_sd = np.mstd(beta_grads, ddof=1)
+    beta_sd = np.std(beta_grads, ddof=1)
     return {
         'v': v,
         'beta': beta,
@@ -49,8 +49,8 @@ def no_vrt(v,beta):
     }
 vs_to_try = [0.1, 0.6]
 betas_to_try = [2, 4]
-tasks = [(v,beta) for beta in betas_to_try for v in vs_to_try]
-with mp.Pool(4) as pool:
+tasks = [(v,beta) for beta in betas_to_try for v in vs_to_try] + [(0.3, 3)]
+with mp.Pool(5) as pool:
     result = pool.starmap(lambda v,beta: no_vrt(v,beta), tasks)
 # %%
 
