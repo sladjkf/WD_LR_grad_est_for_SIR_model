@@ -197,6 +197,32 @@ def grad_wrt_v(plus_samples, minus_samples, N, i0):
     return np.mean(mean_grad), np.std(mean_grad, ddof=1)
 
 def cvar_grad_wrt_v(orig_samples, plus_samples, minus_samples, N, i0, alpha = 0.95):
+    """
+    Discrete CVaR gradient estimator (not proven to work yet.)
+
+    Parameters
+    ----------
+    orig_samples : np.array[int] of length N_samples
+        The total infected along the unperturbed sample paths.
+    plus_samples : np.array[int] of length N_samples
+        The total infected along the sample paths using the \mu^+ 
+        distribution for number initially immune.
+    minus_samples : np.array[int] of length N_samples
+        The total infected along the sample paths using the \mu^- 
+        distribution for number initially immune.
+    N : int
+        Population size.
+    i0 : int
+        Number initially infected.
+    alpha : float, optional
+        Risk level (for CVaR). The default is 0.95.
+
+    Returns
+    -------
+    tuple[float, float]
+        Gradient estimate, estimate of standard deviation.
+
+    """
     assert len(plus_samples) == len(minus_samples) == len(orig_samples)
     n = len(plus_samples)
     m = int(np.floor(np.sqrt(n)))
@@ -267,6 +293,29 @@ def grad_wrt_beta(trajectories, score_samples, T, N_samples, avg=True):
         return gradients
         
 def y_pmf(y, prev_state, beta, N):
+    """
+    The mass function associated with the transition probabilities of
+    the tSIR model. Used for calculating the derivative estimator.
+    
+    Parameters
+    ----------
+    y : int
+        Argument of the PMF.
+    prev_state : tuple[int, int]
+        Previous state. 
+        Index 0 is S (number susceptible).
+        Index 1 is I (number infected).
+    beta : float
+        Contact rate parameter.
+    N : int
+        Population size.
+
+    Returns
+    -------
+    float
+        Probability value.
+
+    """
     r = prev_state[1]
     if y < 0.0:
         return 0.0
@@ -274,14 +323,64 @@ def y_pmf(y, prev_state, beta, N):
     p = r / (r + mu)
     return stats.nbinom.pmf(y, n = r, p = p)
 
+
 def LR_score(y, last_i, lambd, beta):
-    if lambd == 0: return 0.0
-    term = (y / lambd) - ((y + last_i) / (last_i + lambd))
-    return term * (lambd / beta)
+    """
+    Helper function to calculate terms in the likelihood-ratio gradient.
+    This is the derivative of the score of the pmf_Y term.
+
+    Parameters
+    ----------
+    y : int
+        Argument of the PMF, same as in pmf_Y.
+    last_i : int
+        Number of previously infected individuals.
+    lambd : float
+        beta*S*I/N. Calculated outside the function.
+    beta : float
+        Contact rate parameter.
+
+    Returns
+    -------
+    float
+        Score factor, used to calculate likelihood-ratio gradient.
+
+    """
+    
+    if lambd == 0:
+        return 0.0
+    else:
+        term = (y / lambd) - ((y + last_i) / (last_i + lambd))
+        return term * (lambd / beta)
 
 def LR_beta_term(next_state, prev_state, beta, N):
-    next_s, next_i, next_r = next_state
-    last_s, last_i, last_r = prev_state
+    """
+    Helper function to calculate d log P(s', i' | s,i)/ d beta.
+
+    Parameters
+    ----------
+    next_state : tuple[float, float]
+        The next state. Should be [S_{j+1}, I_{j+1}]
+        i.e. 0th index is susceptible amount at time j+1, 
+        1st index is infected amount at time j+1.
+    prev_state : tuple[float, float]
+        The previous state. Should be [S_j, I_j]
+        i.e. 0th index is susceptible amount at time j,
+        1st index is infected amount at time j.
+    beta : float
+        Contact rate parameter.
+    N : int
+        Total population size.
+
+    Returns
+    -------
+    float
+        The value of d log P(s', i' | s,i)/ d beta.
+
+    """
+    
+    next_s, next_i = next_state
+    last_s, last_i = prev_state
     
     y = next_i
     lambd = beta * last_s * last_i / N
@@ -314,6 +413,28 @@ def LR_beta_term(next_state, prev_state, beta, N):
     return 0.0
 
 def _get_infections_crn(state_vector, N, beta, u1):
+    """
+    Helper function to calculate next state based upon a generated
+    random number.
+
+    Parameters
+    ----------
+    state_vector : tuple[int, int]
+        Current state. [Susceptible, Infected]
+    N : int
+        Total population size.
+    beta : float
+        Contact rate parameter.
+    u1 : float
+        A uniform random variate between 0 and 1.
+
+    Returns
+    -------
+    float
+        The next value of I (infected individuals.)
+
+    """
+    
     r = state_vector[1]
     if r < 1:
         return 0
@@ -324,6 +445,43 @@ def _get_infections_crn(state_vector, N, beta, u1):
     return I
 
 def step(state, state_plus, state_minus, beta, N, rng):
+    """
+    Helper function to step from one state to the next
+    based upon the current state, using a specified random number
+    generator.
+
+    Parameters
+    ----------
+    state : tuple[int, int]
+        Current state, when the number initially immune are sampled from the
+        original Binomial distribution.
+        [Susceptible, Infected]
+    state_plus : tuple[int, int]
+        Current state when the initially immune are sampled from the
+        mu^+ distribution (for weak-derivatives.)
+        [Susceptible, Infected]
+    state_minus : tuple[int, int]
+        Current state when the initially immune are sampled from the
+        mu^- distribution (for weak-derivatives.)
+        [Susceptible, Infected]
+    beta : float
+        Contact rate parameter.
+    N : int
+        Population size.
+    rng : np.random.Generator
+        An instance of a numpy random number generator.
+
+    Returns
+    -------
+    next_state : tuple[int,int]
+        Next state.
+    next_state_plus : tuple[int,int]
+        Next state under the mu^+ distribution.
+    next_state_minus : tuple[int,int]
+        Next state under the mu^- distribution.
+
+    """
+    
     u1 = rng.random()
     
     if state[1] < 1:
@@ -526,63 +684,3 @@ def draw_samples_random_params(N, i0,
         return orig_samples, plus_samples, minus_samples, trajectories, score_samples, sampled_v, sampled_beta
     else:
         return orig_samples, plus_samples, minus_samples, trajectories, score_samples
-
-
-
-def estimators(orig_samples, plus_samples, minus_samples, N, i0, alpha = 0.9, eps = 1e-6):
-    expr = lambda t: t + (1/(1-alpha)) * np.mean(np.maximum(0, orig_samples - t))
-    # regul_expr = lambda t: t + (1/(1-alpha)) * np.mean(np.maximum(0, orig_samples - t)) + eps * t * t
-    # soln = minimize(regul_expr, x0 = 0)
-    # t = soln.x[0]
-
-    # use the t = sup{x: \hat F(x) \leq \alpha} (left endpoint)
-    N_samples = len(orig_samples)
-    k = int(alpha * N_samples)
-    t = np.partition(orig_samples, k)[k]
-
-    cvar = expr(t)
-    cvar_grad = np.mean((1/(1-alpha)) * (N - i0) * (np.maximum(plus_samples - t, 0.0) - np.maximum(minus_samples - t, 0.0)))
-    mean = np.mean(orig_samples)
-    mean_grad = np.mean((N - i0) * (plus_samples - minus_samples))
-    return mean, mean_grad, cvar, cvar_grad, t
-
-def bootstrap_est(orig_samples, plus_samples, minus_samples, N, i0, alpha=0.9, eps=1e-6, N_resamples=1000):
-    N_samples = len(orig_samples)
-    
-    assert len(orig_samples) == len(plus_samples) == len(minus_samples)
-
-    mean_resamples = np.empty(N_resamples, dtype=float)
-    mean_grad_resamples = np.empty(N_resamples, dtype=float)
-    cvar_resamples = np.empty(N_resamples, dtype=float)
-    cvar_grad_resamples = np.empty(N_resamples, dtype=float)
-    t_resamples = np.empty(N_resamples, dtype=float)
-
-    for i in range(N_resamples):
-        selected_indices = np.random.choice(N_samples, size=N_samples, replace=True)
-        
-        resampled_orig = orig_samples[selected_indices]
-        resampled_plus = plus_samples[selected_indices]
-        resampled_minus = minus_samples[selected_indices]
-        
-        mean, mean_grad, cvar, cvar_grad, t = estimators(
-            resampled_orig, resampled_plus, resampled_minus, N, i0, alpha, eps
-        )
-        
-        mean_resamples[i] = mean
-        mean_grad_resamples[i] = mean_grad
-        cvar_resamples[i] = cvar
-        cvar_grad_resamples[i] = cvar_grad
-        t_resamples[i] = t
-        
-    return {
-        'mean': np.mean(mean_resamples),
-        'mean_sd': np.std(mean_resamples, ddof=1),
-        'mean_grad': np.mean(mean_grad_resamples),
-        'mean_grad_sd': np.std(mean_grad_resamples, ddof=1),
-        'cvar': np.mean(cvar_resamples),
-        'cvar_sd': np.std(cvar_resamples, ddof=1),
-        'cvar_grad': np.mean(cvar_grad_resamples),
-        'cvar_grad_sd': np.std(cvar_grad_resamples, ddof=1),
-        't': np.mean(t_resamples),
-        't_sd': np.std(t_resamples, ddof=1)
-    }
