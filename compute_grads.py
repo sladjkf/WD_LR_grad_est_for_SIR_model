@@ -27,7 +27,7 @@ def no_vrt(v,beta):
     orig, _, minus, traj, score_samples = draw_samples(
         N, i0, v, beta, T, N_samples, scrambler_seed
     )
-    v_grads =(N-i0) * (plus - minus)
+    v_grads = (N-i0) * (plus - minus)
     v_mean = np.mean(v_grads)
     v_sd = np.std(v_grads, ddof=1)
     beta_grads = orig * np.sum(score_samples, axis=0)
