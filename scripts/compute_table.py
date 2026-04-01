@@ -3,6 +3,9 @@
 """
 Created on Thu Mar 19 16:10:51 2026
 
+Script that ingests data from the previously computed simulations and combines 
+them into a single table, while also doing the LaTeX formatting.
+
 @author: nicholasw
 """
 # %%

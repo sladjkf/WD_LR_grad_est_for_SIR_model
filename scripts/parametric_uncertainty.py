@@ -3,6 +3,12 @@
 """
 Created on Thu Mar  5 20:05:37 2026
 
+This script computes the sensitivities that incorporate parameter uncertainty,
+i.e., we average across both the uncertainty in the transmission dynamics
+and input uncertainties in the parameters.
+
+The parameters are sampled indpendently.
+
 @author: nick
 """
 # %%

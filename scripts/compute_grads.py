@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+"""
+Notebook-style script that calculates the gradient estimators for
+scenarios with and without variance reduction.
+"""
+
 # In[1]:
 
 
@@ -14,6 +19,9 @@ import pandas as pd
 
 
 # %%
+# Compute gradient estimates without variance reduction.
+# This means that plus and minus are simulated using different seeds
+# (i.e., independently)
 def no_vrt(v,beta):
     N = 1000
     i0 = 1
@@ -58,7 +66,7 @@ import pandas as pd
 df = pd.DataFrame(result)
 df.to_csv('output/no_vrt_table.csv', index=False)
 # In[2]:
-
+# Make sure gradient computation works for a single example
 
 N = 1000
 i0 = 1
@@ -75,7 +83,7 @@ beta_mean, beta_sd = grad_wrt_beta(traj, score_samples, T, N_samples)
 
 
 # In[107]:
-
+# Helper function to compute gradients for selected parameter values
 
 def compute_gradients(N, i0, v, beta, T, N_samples, scrambler_seed, eps_v=5e-3, eps_beta=5e-2):
     orig, plus, minus, traj, score_samples = draw_samples(
@@ -111,21 +119,10 @@ def compute_gradients(N, i0, v, beta, T, N_samples, scrambler_seed, eps_v=5e-3, 
 
 
 # In[108]:
-
-
 compute_gradients(N, i0, v, beta, T, N_samples, scrambler_seed)
 
-
-# In[109]:
-
-
-df = pd.DataFrame([Out[12]])
-df.index = [(0.1, 0.2)]
-df
-
-
 # In[170]:
-
+# Compute the gradients on a big grid
 
 betas_to_try = np.linspace(2,4,21)
 betas_to_try = [4]

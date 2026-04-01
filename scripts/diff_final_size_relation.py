@@ -3,6 +3,9 @@
 """
 Created on Wed Mar 18 16:44:25 2026
 
+This code implements the semi-analytic method for solving the final-size equations
+and also calculates the derivatives with respect to the parameters of interest.
+
 @author: nicholasw
 """
 
@@ -94,56 +97,8 @@ def size_deriv_corrected(beta, v):
     
     return np.array([size_est, dsize_dbeta, dsize_dv])
 
-# %%
-betas_to_try = np.linspace(2,4)
-vs_to_try = np.linspace(0,1)
-result = np.array([size_deriv_corrected(beta,v)*1000 for v in vs_to_try for beta in betas_to_try])
-# %%
-Z = np.array([entry[0] for entry in result])
-db = np.array([entry[1] for entry in result])
-dv = np.array([entry[2] for entry in result])
-# %%
-Z = Z.reshape((len(vs_to_try), le
-result = np.array([size_deriv_corrected(beta,v)*1000 for v in vs_to_try for beta in betas_to_try])
-# %%
-Z = np.array([entry[0] for entry in result])
-db = np.array([entry[1] for entry in result])
-dv = np.array([entry[2] for entry in result])
-# %%
-Z = Z.reshape((len(vs_to_try), le
-result = np.array([size_deriv_corrected(beta,v)*1000 for v in vs_to_try for beta in betas_to_try])
-# %%
-Z = np.array([entry[0] for entry in result])
-db = np.array([entry[1] for entry in result])
-dv = np.array([entry[2] for entry in result])
-# %%
-Z = Z.reshape((len(vs_to_try), len(betas_to_try)))
-dv = dv.reshape((len(vs_to_try), len(betas_to_try)))
-db = db.reshape((len(vs_to_try), len(betas_to_try)))
-# %%
-X,Y = np.meshgrid(betas_to_try, vs_to_try)
-plt.contourf(X,Y, np.abs(Z))
-plt.colorbar()
-# %%
-plt.contourf(X,Y, np.abs(db))
-plt.colorbar()
-# %%
-plt.contourf(X,Y, np.abs(dv))
-plt.plot(betas_to_try, 1 - 1/betas_to_try, color="red")
-plt.colorbar()
-# %%
-
-plt.plot(Z[:,30])
-
-# %%
-plt.plot(np.linspace(0,1), dv[:,37])
-
-# %%
-
-plt.plot(db[:,25])
-
-# %%
-
+#%%
+# Compute on the same grid of values as in big_run_combined.csv
 import pandas as pd
 df = pd.read_csv('output/big_run_combined.csv')
 result = {'beta':[], 

@@ -5,7 +5,6 @@ Implements the discrete-time stochastic SIR model.
   Using common random numbers for variance reduction.
 - Likelihood-ratio gradient estimator for total inf. wrt. beta (contact rate)
   Using control variates for variance reduction.
-
 """
 
 import numpy as np
