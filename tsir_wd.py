@@ -72,7 +72,7 @@ def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
     orig_traj = np.empty(traj_shape, dtype=int)
     plus_traj = np.empty(traj_shape, dtype=int)
     minus_traj = np.empty(traj_shape, dtype=int)
-
+    
     orig_traj[0] = [orig_S, i0, 0]
     plus_traj[0] = [plus_S, i0, 0]
     minus_traj[0] = [minus_S, i0, 0]
@@ -358,12 +358,12 @@ def LR_beta_term(next_state, prev_state, beta, N):
 
     Parameters
     ----------
-    next_state : tuple[float, float]
-        The next state. Should be [S_{j+1}, I_{j+1}]
+    next_state : tuple[float, float, float]
+        The next state. Should be [S_{j+1}, I_{j+1}, R_{j+1}]
         i.e. 0th index is susceptible amount at time j+1, 
         1st index is infected amount at time j+1.
-    prev_state : tuple[float, float]
-        The previous state. Should be [S_j, I_j]
+    prev_state : tuple[float, float, float]
+        The previous state. Should be [S_j, I_j, R_j]
         i.e. 0th index is susceptible amount at time j,
         1st index is infected amount at time j.
     beta : float
@@ -377,9 +377,9 @@ def LR_beta_term(next_state, prev_state, beta, N):
         The value of d log P(s', i' | s,i)/ d beta.
 
     """
-    
-    next_s, next_i = next_state
-    last_s, last_i = prev_state
+
+    next_s, next_i, _ = next_state
+    last_s, last_i, _ = prev_state
     
     y = next_i
     lambd = beta * last_s * last_i / N
@@ -472,11 +472,11 @@ def step(state, state_plus, state_minus, beta, N, rng):
 
     Returns
     -------
-    next_state : tuple[int,int]
+    next_state : tuple[int,int,int]
         Next state.
-    next_state_plus : tuple[int,int]
+    next_state_plus : tuple[int,int,int]
         Next state under the mu^+ distribution.
-    next_state_minus : tuple[int,int]
+    next_state_minus : tuple[int,int,int]
         Next state under the mu^- distribution.
 
     """

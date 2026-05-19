@@ -54,7 +54,7 @@ beta = 5
 beta_conf = 10
 T = 10
 
-def find_v(c):
+def find_v(c, seed, iters):
     alpha = 1
     N = 1000
     i0 = 1
@@ -62,11 +62,43 @@ def find_v(c):
     beta = 5
     beta_conf = 10
     T = 10
-    v = stoch_approx_loop(1 - 1/beta, c, alpha, N, i0, beta, beta_conf, T, 10, 11000, 157382, stepsize=1e-3)
+    N_samples=10
+    v = stoch_approx_loop(1 - 1/beta, c, alpha, N, i0, beta, beta_conf, T, N_samples, iters, seed, stepsize=1e-3)
     return v
+
+# %%
 c = np.linspace(1,10)
 with mp.Pool(10) as p:
     result = p.map(find_v, c)
+
+# %%
+c = np.linspace(3,15,25)
+from functools import partial
+path_samples = []
+# take independent samples to form a CI
+ind_reps = 10
+with mp.Pool(11) as p:
+    for i in range(ind_reps):
+        seed = 123535 + i*159302
+        this_result = p.map(partial(find_v, seed=seed, iters=1100), c)
+        # this is estimated solutions for each cost in the vector c, given this seed
+        this_path = np.array([x[-1] for x in this_result])
+        path_samples.append(this_path)
+
+# %%
+path_samples = np.array(path_samples)
+soln_mean = np.mean(path_samples, axis=0)
+soln_sd = np.std(path_samples, axis=0, ddof=1)/np.sqrt(ind_reps)
+df = pd.DataFrame({
+    'c_v' : c,
+    'v_star': soln_mean,
+    'v_star_sd': soln_sd,
+    'beta': beta,
+    'N': N,
+    'T': T
+})
+df.to_csv('v_star_vs_cost_ci_independent_beta_conf_10.csv', index=None)
+
 
 # %%
 # Compute standard deviations of the solutions we found using the method
@@ -146,13 +178,21 @@ def stoch_approx_loop(
         )
         if i % print_every == 0:
             print(i, beta[-1], obj, grad)
-        beta += [np.clip(beta[-1] - (stepsize / (1 + i)) * grad, t + 0.001, N)]
+        beta += [np.clip(beta[-1] - (stepsize / (1 + i)) * grad, t + 0.001, 10)]
     return beta
 
 #%%
 # Given the uncertainty in v, find the optimal beta
+alpha = 1
+N = 1000
+i0 = 1
+v = 0.3
+beta = 5
+T = 10
+N_samples = 10
+v_conf = 10
 
-def find_beta(q, t):
+def find_beta(q, t, iters, seed):
     alpha = 1
     N = 1000
     i0 = 1
@@ -171,12 +211,14 @@ def find_beta(q, t):
         N,
         i0,
         T,
-        10,
-        11000,
-        157382,
-        stepsize=0.99e-3,
+        N_samples,
+        iters,
+        seed,
+        stepsize=1e-3,
     )
     return beta
+# %%
+
 
 
 q = np.linspace(1, 6, num=20)
@@ -194,6 +236,40 @@ for this_q, index in zip(q, range(result.shape[0])):
     ]
     batch_means_results.append([this_q, np.mean(batches), np.std(batches, ddof=1)])
 batch_means_results = np.array(batch_means_results)
+
+
+# %%
+
+# %%
+q = np.linspace(3,10,25)
+t = [1] * len(q)
+path_samples = []
+ind_reps = 10
+# take independent samples to form a CI
+with mp.Pool(11) as p:
+    for i in range(ind_reps):
+        seed = 304134 + i*159302
+        this_result = p.starmap(partial(find_beta, seed=seed, iters=1100), zip(q,t))
+        # this is estimated solutions for each cost in the vector c, given this seed
+        this_path = np.array([x[-1] for x in this_result])
+        path_samples.append(this_path)
+
+# %%
+path_samples = np.array(path_samples)
+soln_mean = np.mean(path_samples, axis=0)
+soln_sd = np.std(path_samples, axis=0, ddof=1)/np.sqrt(ind_reps)
+df = pd.DataFrame({
+    'c_v' : c,
+    'beta_star': soln_mean,
+    'beta_star_sd': soln_sd,
+    'v': beta,
+    'N': N,
+    'T': T
+})
+df.to_csv('beta_star_vs_cost_ci_independent_v_conf_10.csv', index=None)
+
+
+
 # %%
 
 # Save the results to a csv file

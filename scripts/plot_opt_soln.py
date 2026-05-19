@@ -15,8 +15,11 @@ plt.rcParams.update({'font.size': 15})
 
 # %%
 plt.figure(figsize=(10,7))
-df1 = pd.read_csv('output/v_star_vs_cost.csv')
-df2 = pd.read_csv('output/parametric_uncertainty/v_star_vs_cost_beta_conf_10.csv')
+#df1 = pd.read_csv('output/v_star_vs_cost.csv')
+#df2 = pd.read_csv('output/parametric_uncertainty/v_star_vs_cost_beta_conf_10.csv')
+
+df1 = pd.read_csv('output/data/v_star_vs_cost_ci_independent.csv')
+df2 = pd.read_csv('output/data/v_star_vs_cost_ci_independent_beta_conf_10.csv')
 
 plt.plot(df1['c_v'], 
          df1['v_star'], marker='o', markersize=3,
@@ -50,15 +53,15 @@ plt.show()
 # %%
 
 plt.figure(figsize=(10,7))
-df1 = pd.read_csv('output/beta_star_vs_cost.csv')
-df2 = pd.read_csv('output/parametric_uncertainty/beta_star_vs_cost_v_conf_10.csv')
+df1 = pd.read_csv('output/data/beta_star_vs_cost_ci_independent.csv')
+df2 = pd.read_csv('output/data/beta_star_vs_cost_ci_independent_v_conf_10.csv')
 
 plt.plot(df1['c_v'], 
-         df1['v_star'], marker='o', markersize=3,
+         df1['beta_star'], marker='o', markersize=3,
          label = r"Fixed and known $v$")
 plt.fill_between(df1['c_v'], 
-                 y1 = df1['v_star'] + 1.96*df1['v_star_sd'], 
-                 y2 = df1['v_star'] - 1.96*df1['v_star_sd'],
+                 y1 = df1['beta_star'] + 1.96*df1['beta_star_sd'], 
+                 y2 = df1['beta_star'] - 1.96*df1['beta_star_sd'],
                  alpha=0.25
                  )
 plt.plot(df2['c_v'], df2['beta_star'], marker='o', markersize=3,

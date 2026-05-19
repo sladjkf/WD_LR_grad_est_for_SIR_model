@@ -36,12 +36,21 @@ def stoch_approx_loop(v0, c, alpha, N, i0, beta, T, samples_per_iter, iters, scr
         v += [np.clip(v[-1] - (stepsize/(1+i)) * grad, 0.0001, 0.99)]
     return v
 
+
 # In[4]:
 
-# Calculate the optimal v for a variety of parameters    
+alpha = 1
+N = 1000
+i0 = 1
+v = 0.1
+beta = 5
+T = 10
+N_samples = 10    
 
-import multiprocess as mp
-def find_v(c):
+# %%
+# Calculate the optimal v for a variety of parameters    
+from functools import partial
+def find_v(c, seed, iters):
     alpha = 1
     N = 1000
     i0 = 1
@@ -49,11 +58,37 @@ def find_v(c):
     beta = 5
     T = 10
     N_samples = 10
-    v = stoch_approx_loop(1 - 1/beta, c, alpha, N, i0, beta, T, 10, 11000, 157382, stepsize=1e-3)
+    v = stoch_approx_loop(1 - 1/beta, c, alpha, N, i0, beta, T, N_samples, iters, seed, stepsize=1e-3)
     return v
-c = np.linspace(1,10)
+
+# %%
+
+c = np.linspace(3,15,25)
+path_samples = []
+ind_reps = 10
+# take independent samples to form a CI
 with mp.Pool(11) as p:
-    result = p.map(find_v, c)
+    for i in range(ind_reps):
+        seed = 123535 + i*159302
+        this_result = p.map(partial(find_v, seed=seed, iters=1100), c)
+        # this is estimated solutions for each cost in the vector c, given this seed
+        this_path = np.array([x[-1] for x in this_result])
+        path_samples.append(this_path)
+
+# %%
+
+path_samples = np.array(path_samples)
+soln_mean = np.mean(path_samples, axis=0)
+soln_sd = np.std(path_samples, axis=0, ddof=1)/np.sqrt(ind_reps)
+df = pd.DataFrame({
+    'c_v' : c,
+    'v_star': soln_mean,
+    'v_star_sd': soln_sd,
+    'beta': beta,
+    'N': N,
+    'T': T
+})
+df.to_csv('v_star_vs_cost_ci_independent.csv', index=None)
 
 # In[51]:
 
@@ -145,15 +180,22 @@ def stoch_approx_loop(beta0, q, t, alpha, v, N, i0, T, samples_per_iter, iters, 
         obj, grad = obj_and_grad(beta[-1], q, t, alpha, v, N, i0, T, samples_per_iter, this_seed)
         if i % print_every == 0:
             print(i,beta[-1],obj,grad)
-        beta += [np.clip(beta[-1] - (stepsize/(1+i)) * grad, t+0.001, N)]
+        beta += [np.clip(beta[-1] - (stepsize/(1+i)) * grad, t+0.001, 10)]
     return beta
 
 #%%
 
 # Calculate the solutions using stochastic approximation
+alpha = 1
+N = 1000
+i0 = 1
+v = 0.3
+beta = 5
+T = 10
+N_samples = 10
 
 import multiprocess as mp
-def find_v(q,t):
+def find_beta(q,t, iters, seed):
     alpha = 1
     N = 1000
     i0 = 1
@@ -161,12 +203,44 @@ def find_v(q,t):
     beta = 5
     T = 10
     N_samples = 10
-    beta = stoch_approx_loop(1/(1-v), q, t, alpha, v, N, i0, T, 10, 11000, 157382, stepsize=1e-2)
+    beta = stoch_approx_loop(1/(1-v), q, t, alpha, v, N, i0, T, N_samples, iters, seed, stepsize=1e-3)
     return beta
-q = np.linspace(1,6, num = 20)
+#q = np.linspace(1,6, num = 20)
+#t = [1] * len(q)
+#with mp.Pool(11) as p:
+#    result = p.starmap(find_beta, zip(q,t))
+# %%
+
+find_beta(10,1,1100,304134)
+
+
+# %%
+q = np.linspace(3,10,25)
 t = [1] * len(q)
+path_samples = []
+ind_reps = 10
+# take independent samples to form a CI
 with mp.Pool(11) as p:
-    result = p.starmap(find_v, zip(q,t))
+    for i in range(ind_reps):
+        seed = 304134 + i*159302
+        this_result = p.starmap(partial(find_beta, seed=seed, iters=1100), zip(q,t))
+        # this is estimated solutions for each cost in the vector c, given this seed
+        this_path = np.array([x[-1] for x in this_result])
+        path_samples.append(this_path)
+
+# %%
+path_samples = np.array(path_samples)
+soln_mean = np.mean(path_samples, axis=0)
+soln_sd = np.std(path_samples, axis=0, ddof=1)/np.sqrt(ind_reps)
+df = pd.DataFrame({
+    'c_v' : c,
+    'beta_star': soln_mean,
+    'beta_star_sd': soln_sd,
+    'v': beta,
+    'N': N,
+    'T': T
+})
+df.to_csv('beta_star_vs_cost_ci_independent.csv', index=None)
 
 
 # In[118]:
