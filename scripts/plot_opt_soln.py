@@ -12,29 +12,34 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 15})
+# %%
+from scipy.stats import t as t_dist
+ind_reps = 10
+t_crit_value = t_dist.ppf(1 - 0.05/2, df=ind_reps-1)
 
 # %%
 plt.figure(figsize=(10,7))
 #df1 = pd.read_csv('output/v_star_vs_cost.csv')
 #df2 = pd.read_csv('output/parametric_uncertainty/v_star_vs_cost_beta_conf_10.csv')
 
-df1 = pd.read_csv('output/data/v_star_vs_cost_ci_independent.csv')
-df2 = pd.read_csv('output/data/v_star_vs_cost_ci_independent_beta_conf_10.csv')
+#df1 = pd.read_csv('output/data/v_star_vs_cost_ci_independent.csv')
+df1 = pd.read_csv('v_star_vs_cost_ci_independent.csv')
+df2 = pd.read_csv('v_star_vs_cost_ci_independent_beta_conf_10.csv')
 
 plt.plot(df1['c_v'], 
          df1['v_star'], marker='o', markersize=3,
          label = r"Fixed and known $\beta$")
 plt.fill_between(df1['c_v'], 
-                 y1 = df1['v_star'] + 1.96*df1['v_star_sd'], 
-                 y2 = df1['v_star'] - 1.96*df1['v_star_sd'],
+                 y1 = df1['v_star'] + t_crit_value*df1['v_star_se'], 
+                 y2 = df1['v_star'] - t_crit_value*df1['v_star_se'],
                  alpha=0.25
                  )
 plt.plot(df2['c_v'], df2['v_star'], marker='o', markersize=3,
          label = r"Uncertain $\beta$"
          )
 plt.fill_between(df2['c_v'], 
-                 y1 = df2['v_star'] + 1.96*df2['v_star_sd'], 
-                 y2 = df2['v_star'] - 1.96*df2['v_star_sd'],
+                 y1 = df2['v_star'] + t_crit_value*df2['v_star_sd'], 
+                 y2 = df2['v_star'] - t_crit_value*df2['v_star_sd'],
                  alpha=0.25,
                  )
 plt.plot(df1['c_v'], 1 - 1/df1['beta'], color="red", linestyle="dashed",
@@ -53,23 +58,23 @@ plt.show()
 # %%
 
 plt.figure(figsize=(10,7))
-df1 = pd.read_csv('output/data/beta_star_vs_cost_ci_independent.csv')
-df2 = pd.read_csv('output/data/beta_star_vs_cost_ci_independent_v_conf_10.csv')
+df1 = pd.read_csv('beta_star_vs_cost_ci_independent.csv')
+df2 = pd.read_csv('beta_star_vs_cost_ci_independent_v_conf_10.csv')
 
 plt.plot(df1['c_v'], 
          df1['beta_star'], marker='o', markersize=3,
          label = r"Fixed and known $v$")
 plt.fill_between(df1['c_v'], 
-                 y1 = df1['beta_star'] + 1.96*df1['beta_star_sd'], 
-                 y2 = df1['beta_star'] - 1.96*df1['beta_star_sd'],
+                 y1 = df1['beta_star'] + t_crit_value*df1['beta_star_sd'], 
+                 y2 = df1['beta_star'] - t_crit_value*df1['beta_star_sd'],
                  alpha=0.25
                  )
 plt.plot(df2['c_v'], df2['beta_star'], marker='o', markersize=3,
          label = r"Uncertain $v$"
          )
 plt.fill_between(df2['c_v'], 
-                 y1 = df2['beta_star'] + 1.96*df2['beta_star_sd'], 
-                 y2 = df2['beta_star'] - 1.96*df2['beta_star_sd'],
+                 y1 = df2['beta_star'] + t_crit_value*df2['beta_star_sd'], 
+                 y2 = df2['beta_star'] - t_crit_value*df2['beta_star_sd'],
                  alpha=0.25,
                  )
 plt.plot(df2['c_v'], 1/(1-df2['v']), color="red", linestyle="dashed",

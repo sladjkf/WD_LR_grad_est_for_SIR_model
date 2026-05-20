@@ -77,10 +77,11 @@ from functools import partial
 path_samples = []
 # take independent samples to form a CI
 ind_reps = 10
+iters_per_rep = 500
 with mp.Pool(11) as p:
     for i in range(ind_reps):
         seed = 123535 + i*159302
-        this_result = p.map(partial(find_v, seed=seed, iters=1100), c)
+        this_result = p.map(partial(find_v, seed=seed, iters=iters_per_rep), c)
         # this is estimated solutions for each cost in the vector c, given this seed
         this_path = np.array([x[-1] for x in this_result])
         path_samples.append(this_path)
@@ -95,7 +96,9 @@ df = pd.DataFrame({
     'v_star_sd': soln_sd,
     'beta': beta,
     'N': N,
-    'T': T
+    'T': T,
+    'ind_reps': ind_reps,
+    'iters_per_rep': iters_per_rep
 })
 df.to_csv('v_star_vs_cost_ci_independent_beta_conf_10.csv', index=None)
 
@@ -245,11 +248,12 @@ q = np.linspace(3,10,25)
 t = [1] * len(q)
 path_samples = []
 ind_reps = 10
+iters_per_rep = 500
 # take independent samples to form a CI
 with mp.Pool(11) as p:
     for i in range(ind_reps):
         seed = 304134 + i*159302
-        this_result = p.starmap(partial(find_beta, seed=seed, iters=1100), zip(q,t))
+        this_result = p.starmap(partial(find_beta, seed=seed, iters=iters_per_rep), zip(q,t))
         # this is estimated solutions for each cost in the vector c, given this seed
         this_path = np.array([x[-1] for x in this_result])
         path_samples.append(this_path)
@@ -262,9 +266,11 @@ df = pd.DataFrame({
     'c_v' : c,
     'beta_star': soln_mean,
     'beta_star_sd': soln_sd,
-    'v': beta,
+    'v': v,
     'N': N,
-    'T': T
+    'T': T,
+    'ind_reps': ind_reps,
+    'iters_per_rep': iters_per_rep
 })
 df.to_csv('beta_star_vs_cost_ci_independent_v_conf_10.csv', index=None)
 
