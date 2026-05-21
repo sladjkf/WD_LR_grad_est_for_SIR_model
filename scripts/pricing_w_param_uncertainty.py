@@ -48,6 +48,7 @@ def compute_price(beta):
             N_samples,
             scrambler_seed,
             random_beta=True,
+            #random_beta=False,
             random_v=False
         )
     )
@@ -119,6 +120,7 @@ def compute_price(v):
             scrambler_seed,
             random_beta=False,
             random_v=True
+            #random_v=False
         )
     )
     grad_samples = grad_wrt_beta(traj, score_samples, T, N_samples, avg=False)

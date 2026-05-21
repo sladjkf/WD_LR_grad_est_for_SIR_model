@@ -64,9 +64,9 @@ def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
     # V_minus = immune
     # V_plus = immune + 1
     
-    orig_S = N - V
-    plus_S = N - V_plus
-    minus_S = N - V_minus
+    orig_S = N_minus_i0 - V
+    plus_S = N_minus_i0 - V_plus
+    minus_S = N_minus_i0 - V_minus
 
     traj_shape = (T + 1, 3)
     orig_traj = np.empty(traj_shape, dtype=int)

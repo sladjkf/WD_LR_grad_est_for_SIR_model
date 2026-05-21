@@ -26,7 +26,7 @@ import os
 import numpy as np
 import pandas as pd
 
-old_run = pd.read_csv('output/big_run_combined.csv')
+old_run = pd.read_csv('output/data/big_run_results.csv')
 
 output_file = 'parametric_uncertainty_results.csv'
 
@@ -48,11 +48,11 @@ with open(output_file, 'a', newline='') as csvfile:
     if not file_exists:
         writer.writeheader()
 
-    for beta_conf in [10, 100, 1000]:
-        for v_conf in [10, 100, 1000]:
+    for beta_conf in [10]:
+        for v_conf in [10]:
             for idx, row in old_run.iterrows():
                 # --- Your existing simulation logic ---
-                N_samples = 20000
+                N_samples = 10000
                 scrambler_seed = 551505
                 this_v = row['v']
                 this_beta = row['beta']
@@ -60,7 +60,7 @@ with open(output_file, 'a', newline='') as csvfile:
                 print(this_v, v_conf, this_beta, beta_conf)
                 orig_samples, plus_samples, minus_samples, trajectories, score_samples = \
                     draw_samples_random_params(N, i0, this_v, this_beta, v_conf, beta_conf, 
-                                               T, N_samples, scrambler_seed, cores=12)
+                                               T, N_samples, scrambler_seed, cores=15)
                 
                 beta_grad, beta_grad_sd = grad_wrt_beta(trajectories, score_samples, T, N_samples)
                 v_grad, v_grad_sd = grad_wrt_v(plus_samples, minus_samples, N, i0)

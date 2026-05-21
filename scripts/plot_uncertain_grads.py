@@ -54,25 +54,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # 1. Load and process first dataset
-df1 = pd.read_csv("output/parametric_uncertainty/parametric_uncertainty_results.csv")
+df1 = pd.read_csv("output/data/parametric_uncertainty/parametric_uncertainty_results.csv")
 selection1 = df1[(df1['beta_conf'] == 10) & (df1['v_conf'] == 10)]
 beta1 = np.unique(selection1['beta'])
 v1 = np.unique(selection1['v'])
-beta_grad1 = np.abs(np.array(selection1['beta_grad']).reshape(len(v1), len(beta1)))
+beta_grad1 = np.abs(np.array(selection1['beta_grad']).reshape(len(v1), len(beta1)).T)
 
 # 2. Load and process second dataset
-df2 = pd.read_csv("output/big_run_combined.csv")
+df2 = pd.read_csv("output/data/big_run_results.csv")
 # Note: Ensure selection filter logic for df2 matches your requirements
 selection2 = df2 
 beta2 = np.unique(selection2['beta'])
 v2 = np.unique(selection2['v'])
 # Based on your snippet: using 'beta_mean' for the second plot's gradient
-beta_grad2 = np.abs(np.array(selection2['beta_mean']).reshape(len(v2), len(beta2)))
+beta_grad2 = np.abs(np.array(selection2['beta_mean']).reshape(len(v2), len(beta2)).T)
 
-df3 = pd.read_csv("output/semi_analytic_result.csv")
+df3 = pd.read_csv("output/data/semi_analytic_result.csv")
 beta3 = np.unique(df3['beta'])
 v3 = np.unique(df3['v'])
 beta_grad3 = np.abs(np.array(df3['db'])).reshape(len(v3), len(beta3))
+
 
 # Define critical curves
 crit_curve_v1 = 1 - 1/beta1
@@ -139,21 +140,21 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
 
 # 1. Load Data
-df1 = pd.read_csv("output/parametric_uncertainty/parametric_uncertainty_results.csv")
-df2 = pd.read_csv("output/big_run_combined.csv")
-df3 = pd.read_csv("output/semi_analytic_result.csv")
+df1 = pd.read_csv("output/data/parametric_uncertainty/parametric_uncertainty_results.csv")
+df2 = pd.read_csv("output/data/big_run_results.csv")
+df3 = pd.read_csv("output/data/semi_analytic_result.csv")
 
 # 2. Process Dataset 1
 selection1 = df1[(df1['beta_conf'] == 10) & (df1['v_conf'] == 10)]
 beta1 = np.unique(selection1['beta'])
 v1 = np.unique(selection1['v'])
-v_grad1 = np.abs(np.array(selection1['v_grad']).reshape(len(v1), len(beta1)))
+v_grad1 = np.abs(np.array(selection1['v_grad']).reshape(len(v1), len(beta1)).T)
 
 # 3. Process Dataset 2
 selection2 = df2 
 beta2 = np.unique(selection2['beta'])
 v2 = np.unique(selection2['v'])
-v_grad2 = np.abs(np.array(selection2['v_mean']).reshape(len(v2), len(beta2)))
+v_grad2 = np.abs(np.array(selection2['v_mean']).reshape(len(v2), len(beta2)).T)
 
 beta3 = np.unique(df3['beta'])
 v3 = np.unique(df3['v'])

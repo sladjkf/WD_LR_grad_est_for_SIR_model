@@ -23,8 +23,8 @@ plt.figure(figsize=(10,7))
 #df2 = pd.read_csv('output/parametric_uncertainty/v_star_vs_cost_beta_conf_10.csv')
 
 #df1 = pd.read_csv('output/data/v_star_vs_cost_ci_independent.csv')
-df1 = pd.read_csv('v_star_vs_cost_ci_independent.csv')
-df2 = pd.read_csv('v_star_vs_cost_ci_independent_beta_conf_10.csv')
+df1 = pd.read_csv('output/data/v_star_vs_cost_ci_independent.csv')
+df2 = pd.read_csv('output/data/v_star_vs_cost_ci_independent_beta_conf_10.csv')
 
 plt.plot(df1['c_v'], 
          df1['v_star'], marker='o', markersize=3,
@@ -58,8 +58,8 @@ plt.show()
 # %%
 
 plt.figure(figsize=(10,7))
-df1 = pd.read_csv('beta_star_vs_cost_ci_independent.csv')
-df2 = pd.read_csv('beta_star_vs_cost_ci_independent_v_conf_10.csv')
+df1 = pd.read_csv('output/data/beta_star_vs_cost_ci_independent.csv')
+df2 = pd.read_csv('output/data/beta_star_vs_cost_ci_independent_v_conf_10.csv')
 
 plt.plot(df1['c_v'], 
          df1['beta_star'], marker='o', markersize=3,
@@ -110,8 +110,8 @@ plt.fill_between(df2['beta'],
 
 # %%
 
-df1 = pd.read_csv('output/cv_star_vs_beta_2_10_fixed.csv')
-df2 = pd.read_csv('output/cv_star_vs_beta_2_10_beta_conf_10.csv')
+df1 = pd.read_csv('output/data/cv_star_vs_beta_2_10_fixed.csv')
+df2 = pd.read_csv('output/data/cv_star_vs_beta_2_10_beta_conf_10.csv')
 
 plt.figure(figsize=(10,7))
 plt.plot(df1['beta'], df1['cv_star_mean']*df1['beta']/df1['N']*100,
@@ -133,9 +133,9 @@ plt.fill_between(df2['beta'],
                  alpha=0.25
                  )
 plt.xlabel(r'$\beta$ (eff. contact rate)')
-plt.ylabel(r'Normalized cost (% infection cost)')
+plt.ylabel(r'Critical unit cost (% infection cost)')
 plt.legend()
-plt.title(r'Comparison of normalized cost: uncertainty in $\beta$ vs. known $\beta$')
+plt.title(r'Comparison of critical unit cost: uncertainty in $\beta$ vs. known $\beta$')
 plt.savefig('output/norm_cost_beta_conf_10.pdf')
 # %%
 
@@ -174,8 +174,8 @@ plt.fill_between(df2['v'],
                  )
 # %%
 
-df2 = pd.read_csv("output/cbeta_star_vs_v_v_conf_10.csv")
-df1 = pd.read_csv("output/cbeta_star_vs_v_v_fixed.csv")
+df2 = pd.read_csv("output/data/cbeta_star_vs_v_v_conf_10.csv")
+df1 = pd.read_csv("output/data/cbeta_star_vs_v_v_fixed.csv")
 
 plt.figure(figsize=(10,7))
 plt.plot(df1['v'], df1['cbeta_norm_mean']*100, marker='o', label=r"Known $v$")
@@ -191,7 +191,7 @@ plt.fill_between(df2['v'],
                  alpha=0.25
                  )
 plt.xlabel(r'$v$ (prop. immune)')
-plt.ylabel(r'Normalized cost (% infection cost)')
-plt.title(r'Comparison of normalized cost: uncertainty in $v$ vs. known $v$')
+plt.ylabel(r'Critical unit cost (% infection cost)')
+plt.title(r'Comparison of critical unit cost: uncertainty in $v$ vs. known $v$')
 plt.legend()
-plt.savefig('output/norm_cost_beta_conf_10.pdf')
+plt.savefig('output/norm_cost_v_conf_10.pdf')

@@ -14,22 +14,22 @@ import numpy as np
 
 # %%
 
-df_grad_fd = pd.read_csv('output/big_run_combined.csv')
-df_analytic = pd.read_csv('output/semi_analytic_result.csv')
+df_grad_fd = pd.read_csv('output/data/big_run_results.csv')
+df_analytic = pd.read_csv('output/data/semi_analytic_result.csv')
 
 # %%
 
 v = 0.1
 beta = 2
 
-# v = 0.6
-# beta = 2
+v = 0.6
+beta = 2
 
-# v = 0.1
-# beta = 4
+v = 0.1
+beta = 4
 
-# v = 0.6
-# beta = 4
+v = 0.6
+beta = 4
 
 selection_grad_fd = df_grad_fd[df_grad_fd['v'] == v]
 selection_grad_fd = selection_grad_fd[selection_grad_fd['beta'] == beta]
@@ -60,7 +60,7 @@ se = np.array([
     fd_beta_sd
 ])/np.sqrt(N_samples)
 
-row3 = pd.Series({
+row1 = pd.Series({
  # 'size_eqn' : size,
  # 'size_mean' : total_size_mean,
  # 'size_se' : se[0],
@@ -75,6 +75,8 @@ row3 = pd.Series({
  # 'dbeta_lr_se' : se[2],
  # 'dbeta_fd_se' : se[4]
 })
+# %%
+
 
 df_table = pd.concat({'v=0.6, beta=2': row1, 'v=0.7, beta=4': row2, 'v=0.1, beta=4': row3}, axis=1)
 

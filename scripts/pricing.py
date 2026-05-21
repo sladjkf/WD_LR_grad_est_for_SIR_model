@@ -28,7 +28,7 @@ def compute_price(beta):
     i0 = 1
     v = 1 - 1/beta
     T = 10
-    N_samples = 40000
+    N_samples = 10000
     scrambler_seed = 12360982735
     orig, plus, minus, traj, score_samples = draw_samples(
         N, i0, v, beta, T, N_samples, scrambler_seed
@@ -39,15 +39,16 @@ def compute_price(beta):
 
 
 # In[251]:
-
+betas_to_try = np.linspace(2,10)
 with mp.Pool(11) as p:
     result = p.map(compute_price, betas_to_try)
 
 
 # In[252]:
-
-
 result = np.array(result)
+df = pd.DataFrame({
+    'beta':
+})
 
 
 # In[246]:
