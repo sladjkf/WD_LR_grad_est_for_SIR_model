@@ -9,7 +9,6 @@ R_0 < 1), given a fixed and known value of the other parameter.
 For example, if we want to find a critical cost for v, then we must have a 
 fixed and known value of beta.
 
-@author: nicholasw
 """
 
 import numpy as np

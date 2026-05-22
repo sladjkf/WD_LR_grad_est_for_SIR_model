@@ -6,8 +6,6 @@ Created on Sun Mar  8 22:03:10 2026
 This script calculates the optimal solution of a stochastic approximation
 problem where one variable is treated as a decision variable, and the other
 treated as random with a known distribution.
-
-@author: nick
 """
 
 import pandas as pd

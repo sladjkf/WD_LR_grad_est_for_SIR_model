@@ -3,7 +3,6 @@
 """
 Created on Sun Mar  8 17:25:20 2026
 
-@author: nick
 """
 
 # %%

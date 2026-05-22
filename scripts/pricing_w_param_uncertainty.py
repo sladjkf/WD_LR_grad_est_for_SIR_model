@@ -8,7 +8,6 @@ R_0 < 1), under parametric uncertainty.
 
 We use the Beta distribution for v and the Gamma distribution for beta.
 
-@author: nicholasw
 """
 
 import pandas as pd

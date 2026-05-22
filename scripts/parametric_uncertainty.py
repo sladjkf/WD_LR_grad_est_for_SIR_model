@@ -9,7 +9,6 @@ and input uncertainties in the parameters.
 
 The parameters are sampled indpendently.
 
-@author: nick
 """
 # %%
 
