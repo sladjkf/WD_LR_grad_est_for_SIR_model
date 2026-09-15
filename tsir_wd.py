@@ -89,6 +89,71 @@ def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
 
     return orig_traj, plus_traj, minus_traj
 
+def tSIR_WD_beta_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
+    pop_rng = np.random.default_rng(pop_seed)
+    dyn_rng = np.random.default_rng(dyn_seed)
+
+    pop_U = pop_rng.random()
+    N_minus_i0 = N - i0
+    assert N_minus_i0 > 0
+    
+    # Binomial initial condition
+    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
+    
+    S = N_minus_i0 - V
+    
+    traj_shape = (T + 1, 3)
+    all_trajs = []
+    
+    for t_to_pert in range(T):
+        plus_traj = np.empty(traj_shape, dtype = int)
+        plus_traj[0] = [S, i0, 0]
+        minus_traj = np.empty(traj_shape, dtype = int)
+        minus_traj[0] = [S, i0, 0]
+        scale = None
+        
+        for i in range(T):
+            if i == t_to_pert:
+                # paths are identical so far so tbh it doesn't matter - s*i/N
+                scale = minus_traj[i, 0] * minus_traj[i, 1] / N 
+                #scale = minus_traj[i, 0] * minus_traj[i, 1] / (N + beta * minus_traj[i,0])
+                
+                #logic copied from _get_infections_crn
+                # update negative state
+                u1 = dyn_rng.random()
+                if minus_traj[i, 1] < 1:
+                    next_I = 0
+                    pert_I = 0
+                else:
+                    # wd is r = i + 1, mean = lambd * (i+1)/i
+                    # with lambd = beta * s * i / N
+                    r = minus_traj[i, 1] + 1
+                    mu = (beta * minus_traj[i,0] * minus_traj[i, 1] / N) * ((minus_traj[i, 1] + 1)/minus_traj[i, 1])
+                    p = r / (r + mu)
+                    Y = stats.nbinom.ppf(q = u1, n = r, p = p)
+                    next_I = np.minimum(Y, minus_traj[i,0])
+                    pert_I = np.minimum(Y+1, minus_traj[i,0])
+                #next_I = _get_infections_crn(minus_traj[i], N, beta, dyn_rng.random())
+                #pert_I = min(next_I + 1, minus_traj[i, 0])
+                next_plus = step_one(plus_traj[i], pert_I)
+                next_minus = step_one(minus_traj[i], next_I)
+
+            else: # take a normal step
+                _, next_plus, next_minus = step(
+                    (0,0), plus_traj[i], minus_traj[i], 
+                    beta, N, dyn_rng
+                )
+            
+            plus_traj[i + 1] = next_plus
+            minus_traj[i + 1] = next_minus
+            
+        all_trajs.append((scale, plus_traj, minus_traj))
+        
+    return all_trajs
+            
+    
+
+
 def draw_samples(N, i0, v, beta, T, N_samples, scrambler_seed, max_scrambler = 1e8, calc_LR = True):
     """
     Sample several simulation paths of the tSIR model.
@@ -443,6 +508,17 @@ def _get_infections_crn(state_vector, N, beta, u1):
     I = np.minimum(Y, state_vector[0])
     return I
 
+def step_one(state, next_I):
+    if state[1] < 1:
+        next_state = state
+    else:
+        next_state = np.array([
+            state[0] - next_I,
+            next_I, 
+            state[2] + state[1]            
+        ])
+    return next_state
+
 def step(state, state_plus, state_minus, beta, N, rng):
     """
     Helper function to step from one state to the next
@@ -483,35 +559,14 @@ def step(state, state_plus, state_minus, beta, N, rng):
     
     u1 = rng.random()
     
-    if state[1] < 1:
-        next_state = state
-    else:
-        I_orig = _get_infections_crn(state, N, beta, u1)
-        next_state = np.array([
-            state[0] - I_orig,
-            I_orig, 
-            state[2] + state[1]            
-        ])
+    I_orig = _get_infections_crn(state, N, beta, u1)
+    next_state = step_one(state, I_orig)
 
-    if state_plus[1] < 1:
-        next_state_plus = state_plus
-    else:
-        I_plus = _get_infections_crn(state_plus, N, beta, u1)
-        next_state_plus = np.array([
-            state_plus[0] - I_plus,
-            I_plus,
-            state_plus[2] + state_plus[1]
-        ])
-
-    if state_minus[1] < 1:
-        next_state_minus = state_minus
-    else:
-        I_minus = _get_infections_crn(state_minus, N, beta, u1)
-        next_state_minus = np.array([
-            state_minus[0] - I_minus,
-            I_minus,
-            state_minus[2] + state_minus[1]
-        ])
+    I_plus = _get_infections_crn(state_plus, N, beta, u1)
+    next_state_plus = step_one(state_plus, I_plus)
+    
+    I_minus = _get_infections_crn(state_minus, N, beta, u1)
+    next_state_minus = step_one(state_minus, I_minus)
     
     return next_state, next_state_plus, next_state_minus
 
@@ -689,6 +744,11 @@ def draw_samples_random_params(N, i0,
 # via a matrix-powers approach
 
 def transition_prob(s_from, i_from, s_to, i_to, beta, N):
+    """
+    Helper function that returns the transition probability
+    and used for filling out the transition matrix in 
+    the function inf_via_matrix_powers_tSIR.
+    """
     both_positive = s_from > 0 and i_from > 0
     if s_to == 0 and i_to == s_from and both_positive:
         return 1 - sum(y_pmf(j, (s_from, i_from), beta, N) for j in range(s_from))
@@ -744,3 +804,14 @@ def inf_via_matrix_powers_tSIR(N, v, i0, beta, T):
         last_state = last_state @ P_matrix
     
     return np.array(I_expect)
+
+def fd_matrix_powers_I(N, v, i0, beta, T, eps, param = 'beta'):
+    if param == 'beta':
+        sim1 = inf_via_matrix_powers_tSIR(N, v, i0, beta - eps, T)
+        sim2 = inf_via_matrix_powers_tSIR(N, v, i0, beta + eps, T)
+    elif param == 'v':
+        sim1 = inf_via_matrix_powers_tSIR(N, v - eps, i0, beta, T)
+        sim2 = inf_via_matrix_powers_tSIR(N, v + eps, i0, beta, T)
+    else:
+        raise ValueError
+    return (np.sum(sim2) - np.sum(sim1))/(2*eps)
