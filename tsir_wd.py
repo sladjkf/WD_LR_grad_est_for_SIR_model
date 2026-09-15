@@ -12,6 +12,29 @@ import scipy.stats as stats
 import multiprocess as mp
 
 
+def tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed):
+    pop_rng = np.random.default_rng(pop_seed)
+    dyn_rng = np.random.default_rng(dyn_seed)
+
+    pop_U = pop_rng.random()
+    N_minus_i0 = N - i0
+    assert N_minus_i0 > 0
+    
+    # Binomial initial condition
+    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
+    S = N_minus_i0 - V
+    traj_shape = (T + 1, 3)
+    traj = np.empty(traj_shape, dtype=int)
+    traj[0] = [S, i0, 0]
+    
+    for i in range(T):
+        next_I = _get_infections_crn(traj[i], N, beta, dyn_rng.random())
+        next_state = step_one(traj[i], next_I)
+        traj[i + 1] = next_state
+
+    return traj, (V / v) - (N_minus_i0-V)/(1-v)
+        
+
 def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
     """
     Simulate a path of the SIR model.
