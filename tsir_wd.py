@@ -683,3 +683,64 @@ def draw_samples_random_params(N, i0,
         return orig_samples, plus_samples, minus_samples, trajectories, score_samples, sampled_v, sampled_beta
     else:
         return orig_samples, plus_samples, minus_samples, trajectories, score_samples
+
+
+# Calculation of the distribution of the number infected
+# via a matrix-powers approach
+
+def transition_prob(s_from, i_from, s_to, i_to, beta, N):
+    both_positive = s_from > 0 and i_from > 0
+    if s_to == 0 and i_to == s_from and both_positive:
+        return 1 - sum(y_pmf(j, (s_from, i_from), beta, N) for j in range(s_from))
+    elif s_to == s_from - i_to and i_to < s_from and both_positive:
+        return y_pmf(i_to, (s_from, i_from), beta, N)
+    elif (not both_positive) and s_from == s_to and i_to == 0:
+        return 1.0
+    else:
+        return 0.0
+
+def inf_via_matrix_powers_tSIR(N, v, i0, beta, T):
+    """
+    Calculate the number of expected infections at each time
+    via the matrix-powers approach. As before,
+    vaccinations are implemented via a binomially-distributed number
+    of initial susceptibles.
+    
+    Parameters
+    ---------
+    N: population size (int)
+    v: Proportion vaccinated (float between 0 and 1)
+    i0: number of initial infected (int)
+    beta: contact rate parameter (float)
+    T: time horizon (int)
+    
+    Returns:
+        I_expect: np.ndarray of length T+1.
+        where the ith entry is the expected number infected at time i.
+    ------
+    """
+    # for now, let's just calculate the expected infections
+    # build transition matrix
+    idxs = [(i,j) for i in range(N+1) for j in range(N+1-i)]
+    mu = np.array([stats.binom.pmf(k=s, n = N - i0, p = 1-v) if i == i0 else 0.0 for (s,i) in idxs])
+    P_matrix = np.zeros((len(idxs), len(idxs)))
+    for i in range(len(idxs)):
+        for j in range(len(idxs)):
+            s_from, i_from = idxs[i]
+            s_to, i_to = idxs[j]
+            P_matrix[i,j] = transition_prob(s_from, i_from, s_to, i_to, beta, N)
+    
+    # calculate the evolution of I distribution over time
+    # I_distrs = []
+    I_expect = [float(i0)]
+    last_state = mu.reshape(-1,1).T
+    for t in range(T):
+        # get the distribution of i
+        this_I_distr = np.zeros(N+1)
+        for (s,i), prob in zip(idxs, last_state.flatten()):
+            this_I_distr[i] += prob
+        I_expect.append(this_I_distr @ np.arange(N+1))
+        # I_distrs.append(this_I_distr)
+        last_state = last_state @ P_matrix
+    
+    return np.array(I_expect)

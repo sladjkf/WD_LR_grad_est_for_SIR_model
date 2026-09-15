@@ -6,7 +6,6 @@ Created on Wed Mar 18 16:44:25 2026
 This code implements the semi-analytic method for solving the final-size equations
 and also calculates the derivatives with respect to the parameters of interest.
 
-@author: nicholasw
 """
 
 # %%
