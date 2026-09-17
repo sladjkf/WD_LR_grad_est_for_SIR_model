@@ -12,6 +12,42 @@ import scipy.stats as stats
 import multiprocess as mp
 
 
+def tSIR_LR_beta_path(N, v, i0, beta, T, pop_seed, dyn_seed):
+    """
+    Simulate a single tSIR path and compute the step-by-step 
+    score function values with respect to beta.
+    
+    Returns
+    -------
+    i_traj : np.ndarray of shape (T+1,)
+        Infected counts at each timestep.
+    step_scores : np.ndarray of shape (T,)
+        Per-timestep transition score d/d_beta log P(x_{i+1} | x_i).
+    """
+    pop_rng = np.random.default_rng(pop_seed)
+    dyn_rng = np.random.default_rng(dyn_seed)
+
+    pop_U = pop_rng.random()
+    N_minus_i0 = N - i0
+    assert N_minus_i0 > 0
+
+    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
+    S = N_minus_i0 - V
+
+    traj = np.empty((T + 1, 3), dtype=int)
+    traj[0] = [S, i0, 0]
+
+    step_scores = np.empty(T)
+
+    for i in range(T):
+        next_I = _get_infections_crn(traj[i], N, beta, dyn_rng.random())
+        next_state = step_one(traj[i], next_I)
+        traj[i + 1] = next_state
+
+        step_scores[i] = LR_beta_term(next_state, traj[i], beta, N)
+
+    return traj[:, 1], step_scores
+
 def tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed):
     pop_rng = np.random.default_rng(pop_seed)
     dyn_rng = np.random.default_rng(dyn_seed)
@@ -770,7 +806,7 @@ def grad_wrt_beta(trajectories, score_samples, T, N_samples, avg=True):
     else:
         return gradients
 
-def grad_wrt_beta_wd()
+#def grad_wrt_beta_wd()
 
 
 # Calculation of the distribution of the number infected
@@ -784,7 +820,11 @@ def transition_prob(s_from, i_from, s_to, i_to, beta, N):
     """
     both_positive = s_from > 0 and i_from > 0
     if s_to == 0 and i_to == s_from and both_positive:
-        return 1 - sum(y_pmf(j, (s_from, i_from), beta, N) for j in range(s_from))
+        r = i_from 
+        mu = beta * s_from * i_from / N
+        p = r / (r + mu)
+        return stats.nbinom.sf(s_from - 1, p = p, n=r)
+        #return 1 - sum(y_pmf(j, (s_from, i_from), beta, N) for j in range(s_from))
     elif s_to == s_from - i_to and i_to < s_from and both_positive:
         return y_pmf(i_to, (s_from, i_from), beta, N)
     elif (not both_positive) and s_from == s_to and i_to == 0:
@@ -792,51 +832,98 @@ def transition_prob(s_from, i_from, s_to, i_to, beta, N):
     else:
         return 0.0
 
+# def inf_via_matrix_powers_tSIR(N, v, i0, beta, T):
+#     """
+#     Calculate the number of expected infections at each time
+#     via the matrix-powers approach. As before,
+#     vaccinations are implemented via a binomially-distributed number
+#     of initial susceptibles.
+    
+#     Parameters
+#     ---------
+#     N: population size (int)
+#     v: Proportion vaccinated (float between 0 and 1)
+#     i0: number of initial infected (int)
+#     beta: contact rate parameter (float)
+#     T: time horizon (int)
+    
+#     Returns:
+#         I_expect: np.ndarray of length T+1.
+#         where the ith entry is the expected number infected at time i.
+#     ------
+#     """
+#     # for now, let's just calculate the expected infections
+#     # build transition matrix
+#     idxs = [(i,j) for i in range(N+1) for j in range(N+1-i)]
+#     mu = np.array([stats.binom.pmf(k=s, n = N - i0, p = 1-v) if i == i0 else 0.0 for (s,i) in idxs])
+#     P_matrix = np.zeros((len(idxs), len(idxs)))
+#     for i in range(len(idxs)):
+#         for j in range(len(idxs)):
+#             s_from, i_from = idxs[i]
+#             s_to, i_to = idxs[j]
+#             P_matrix[i,j] = transition_prob(s_from, i_from, s_to, i_to, beta, N)
+    
+#     # calculate the evolution of I distribution over time
+#     # I_distrs = []
+#     I_expect = []
+#     last_state = mu.reshape(-1,1).T
+#     for t in range(T+1):
+#         # get the distribution of i
+#         this_I_distr = np.zeros(N+1)
+#         for (s,i), prob in zip(idxs, last_state.flatten()):
+#             this_I_distr[i] += prob
+#         I_expect.append(this_I_distr @ np.arange(N+1))
+#         # I_distrs.append(this_I_distr)
+#         last_state = last_state @ P_matrix
+    
+#     return np.array(I_expect)
+
 def inf_via_matrix_powers_tSIR(N, v, i0, beta, T):
-    """
-    Calculate the number of expected infections at each time
-    via the matrix-powers approach. As before,
-    vaccinations are implemented via a binomially-distributed number
-    of initial susceptibles.
+    # 1. Map state tuple to array index
+    idxs = [(s, i) for s in range(N + 1) for i in range(N + 1 - s)]
+    state_to_idx = {state: idx for idx, state in enumerate(idxs)}
+    num_states = len(idxs)
     
-    Parameters
-    ---------
-    N: population size (int)
-    v: Proportion vaccinated (float between 0 and 1)
-    i0: number of initial infected (int)
-    beta: contact rate parameter (float)
-    T: time horizon (int)
+    S_vec = np.array([s for s, i in idxs])
+    I_vec = np.array([i for s, i in idxs])
+
+    # 2. Vectorized initial distribution mu
+    mu = np.where(I_vec == i0, stats.binom.pmf(S_vec, n=N - i0, p=1 - v), 0.0)
+
+    # 3. Fast transition matrix construction
+    P_matrix = np.zeros((num_states, num_states))
     
-    Returns:
-        I_expect: np.ndarray of length T+1.
-        where the ith entry is the expected number infected at time i.
-    ------
-    """
-    # for now, let's just calculate the expected infections
-    # build transition matrix
-    idxs = [(i,j) for i in range(N+1) for j in range(N+1-i)]
-    mu = np.array([stats.binom.pmf(k=s, n = N - i0, p = 1-v) if i == i0 else 0.0 for (s,i) in idxs])
-    P_matrix = np.zeros((len(idxs), len(idxs)))
-    for i in range(len(idxs)):
-        for j in range(len(idxs)):
-            s_from, i_from = idxs[i]
-            s_to, i_to = idxs[j]
-            P_matrix[i,j] = transition_prob(s_from, i_from, s_to, i_to, beta, N)
+    for idx_from, (s_from, i_from) in enumerate(idxs):
+        if i_from == 0 or s_from == 0:
+            # Absorbing or zero-transmission state
+            idx_to = state_to_idx[(s_from, 0)]
+            P_matrix[idx_from, idx_to] = 1.0
+        else:
+            r = i_from
+            mu_param = beta * s_from * i_from / N
+            p = r / (r + mu_param)
+            
+            # Non-capped infections (0 <= i_to < s_from)
+            i_tos = np.arange(s_from)
+            pmfs = stats.nbinom.pmf(i_tos, n=r, p=p)
+            for i_to, prob in enumerate(pmfs):
+                idx_to = state_to_idx[(s_from - i_to, i_to)]
+                P_matrix[idx_from, idx_to] = prob
+
+            # Capped infections (i_to == s_from)
+            p_cap = stats.nbinom.sf(s_from - 1, n=r, p=p)
+            idx_to_cap = state_to_idx[(0, s_from)]
+            P_matrix[idx_from, idx_to_cap] = p_cap
+
+    # 4. Fast propagation & dot product expectation
+    I_expect = np.empty(T + 1)
+    last_state = mu.copy()
     
-    # calculate the evolution of I distribution over time
-    # I_distrs = []
-    I_expect = [float(i0)]
-    last_state = mu.reshape(-1,1).T
-    for t in range(T):
-        # get the distribution of i
-        this_I_distr = np.zeros(N+1)
-        for (s,i), prob in zip(idxs, last_state.flatten()):
-            this_I_distr[i] += prob
-        I_expect.append(this_I_distr @ np.arange(N+1))
-        # I_distrs.append(this_I_distr)
+    for t in range(T + 1):
+        I_expect[t] = last_state @ I_vec
         last_state = last_state @ P_matrix
-    
-    return np.array(I_expect)
+
+    return I_expect
 
 def fd_matrix_powers_I(N, v, i0, beta, T, eps, param = 'beta'):
     """
@@ -864,7 +951,7 @@ def one_sided_fd_crn(N, v, i0, beta, T, eps, pop_seed, dyn_seed, sample_perf, pa
     sample_perf: Callable, accepting a np.ndarray of shape (T+1, 3) where the
     columns are S, I, R and the rows are the time indices.
     """
-    nominal, _ = tSIR_LR_v(N, v, i0, beta + eps, T, pop_seed, dyn_seed)
+    nominal, _ = tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed)
     if param == 'beta':
         sim_plus, _ = tSIR_LR_v(N, v, i0, beta + eps, T, pop_seed, dyn_seed)
     elif param == 'v':
