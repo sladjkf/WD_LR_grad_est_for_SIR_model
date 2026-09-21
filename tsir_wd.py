@@ -951,11 +951,13 @@ def one_sided_fd_crn(N, v, i0, beta, T, eps, pop_seed, dyn_seed, sample_perf, pa
     sample_perf: Callable, accepting a np.ndarray of shape (T+1, 3) where the
     columns are S, I, R and the rows are the time indices.
     """
+    v_pert = np.clip(v+eps, a_min = 0, a_max=1)
+    beta_pert = np.clip(beta+eps, a_min = 0, a_max = np.inf)
     nominal, _ = tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed)
     if param == 'beta':
-        sim_plus, _ = tSIR_LR_v(N, v, i0, beta + eps, T, pop_seed, dyn_seed)
+        sim_plus, _ = tSIR_LR_v(N, v, i0, beta_pert, T, pop_seed, dyn_seed)
     elif param == 'v':
-        sim_plus, _ = tSIR_LR_v(N, v + eps, i0, beta, T, pop_seed, dyn_seed)
+        sim_plus, _ = tSIR_LR_v(N, v_pert, i0, beta, T, pop_seed, dyn_seed)
     else:
         raise ValueError
     return (sample_perf(sim_plus) - sample_perf(nominal))/eps

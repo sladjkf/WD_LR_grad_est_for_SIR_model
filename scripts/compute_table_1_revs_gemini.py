@@ -7,7 +7,8 @@ Run a grid of experiments comparing gradient estimators for the tSIR model:
 - Weak Derivatives (WD) for beta and v
 - Likelihood Ratio (LR) for beta and v
 
-Saves results incrementally as each task completes.
+Supports resuming interrupted runs by reading existing CSV files and 
+skipping previously computed parameter configurations.
 """
 
 import csv
@@ -47,33 +48,33 @@ OUTPUT_DIR = Path("output/data/rev_table1/")
 
 
 # ==========================================
-# Helper & Micro-Replication Functions
+# Helper & Resumption Functions
 # ==========================================
+def load_completed_keys(csv_path, key_cols, round_digits=6):
+    """
+    Reads an existing CSV file and returns a set of tuples representing 
+    already calculated parameter combinations to prevent redundant computation.
+    """
+    if not csv_path.exists() or csv_path.stat().st_size == 0:
+        return set()
+
+    completed = set()
+    with open(csv_path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            key = tuple(
+                round(float(row[col]), round_digits)
+                if col in ("v", "beta", "eps")
+                else int(row[col])
+                for col in key_cols
+            )
+            completed.add(key)
+    return completed
+
+
 def total_inf(traj):
     """Calculates total infections over a trajectory."""
     return np.sum(traj[:, 1])
-
-
-def tSIR_LR_beta_path(N, v, i0, beta, T, pop_seed, dyn_seed):
-    """Simulates a tSIR trajectory and computes per-step score values for beta."""
-    pop_rng = np.random.default_rng(pop_seed)
-    dyn_rng = np.random.default_rng(dyn_seed)
-
-    N_minus_i0 = N - i0
-    V = stats.binom.ppf(q=pop_rng.random(), n=N_minus_i0, p=v)
-    S = N_minus_i0 - V
-
-    traj = np.empty((T + 1, 3), dtype=int)
-    traj[0] = [S, i0, 0]
-    step_scores = np.empty(T)
-
-    for i in range(T):
-        next_I = _get_infections_crn(traj[i], N, beta, dyn_rng.random())
-        next_state = step_one(traj[i], next_I)
-        traj[i + 1] = next_state
-        step_scores[i] = LR_beta_term(next_state, traj[i], beta, N)
-
-    return traj[:, 1], step_scores
 
 
 # --- Micro-Replications ---
@@ -264,28 +265,49 @@ def load_targets(csv_path):
 def run_single_param_experiment(
     micro_fn, target_param, filename, targets, pool
 ):
-    """Pipeline harness to execute and incrementally export single-parameter estimator studies."""
+    """Pipeline harness to execute and incrementally export single-parameter estimator studies with resume support."""
     output_csv = OUTPUT_DIR / filename
-    tasks = [
-        (
-            micro_fn,
+    key_cols = ["N", "v", "beta", "T", "i0"]
+    completed_keys = load_completed_keys(output_csv, key_cols)
+
+    tasks = []
+    for t in targets:
+        task_key = (
             t["N"],
-            t["v"],
-            t["beta"],
+            round(t["v"], 6),
+            round(t["beta"], 6),
             t["T"],
             t["i0"],
-            n_macro,
-            n_micro,
-            t[f"J_{target_param}"],
         )
-        for t in targets
-    ]
+        if task_key not in completed_keys:
+            tasks.append(
+                (
+                    micro_fn,
+                    t["N"],
+                    t["v"],
+                    t["beta"],
+                    t["T"],
+                    t["i0"],
+                    n_macro,
+                    n_micro,
+                    t[f"J_{target_param}"],
+                )
+            )
 
-    with open(output_csv, "w") as f:
-        f.write(
-            f"N,v,beta,T,i0,mean_{target_param},sd_{target_param},mse_{target_param},time_{target_param}\n"
-        )
-        # Process results as they finish and flush to disk immediately
+    if not tasks:
+        print(f"[{filename}] All tasks already completed. Skipping.")
+        return
+
+    print(f"[{filename}] Running {len(tasks)} remaining tasks...")
+
+    file_exists = output_csv.exists() and output_csv.stat().st_size > 0
+    with open(output_csv, "a") as f:
+        if not file_exists:
+            f.write(
+                f"N,v,beta,T,i0,mean_{target_param},sd_{target_param},mse_{target_param},time_{target_param}\n"
+            )
+            f.flush()
+
         for N, v, beta, T, i0, mean_e, sd_e, mse_e, time_e in pool.imap_unordered(
             generic_single_param_worker, tasks
         ):
@@ -316,27 +338,70 @@ if __name__ == "__main__":
             time_beta = time.perf_counter() - t0
             return args, J_v, J_beta, time_v, time_beta
 
-        param_combos = list(
+        key_cols = ["N", "v", "beta", "T", "i0", "eps"]
+        completed_keys = load_completed_keys(matrix_csv, key_cols)
+
+        all_combos = list(
             product(N_vals, v_vals, beta_vals, T_vals, [i0], [fd_matrix])
         )
+        param_combos = [
+            combo
+            for combo in all_combos
+            if (
+                combo[0],
+                round(combo[1], 6),
+                round(combo[2], 6),
+                combo[3],
+                combo[4],
+                round(combo[5], 6),
+            )
+            not in completed_keys
+        ]
 
-        raw_results = []
-        with mp.Pool(cores) as pool:
-            with open(matrix_csv, "w") as f:
-                f.write("N,v,beta,T,i0,eps,J_v,J_beta,time_v,time_beta\n")
-                for (N, v, beta, T, i0, eps), J_v, J_beta, time_v, time_beta in pool.imap_unordered(
-                    matrix_power_worker, param_combos
-                ):
-                    raw_results.append(
-                        ((N, v, beta, T, i0, eps), (J_v, J_beta, time_v, time_beta))
-                    )
-                    f.write(
-                        f'{N},{v},{beta},{T},{i0},{eps},"{J_v}","{J_beta}",{time_v:.6f},{time_beta:.6f}\n'
-                    )
-                    f.flush()
+        if param_combos:
+            print(
+                f"[matrix_power_gradients.csv] Running {len(param_combos)} remaining tasks..."
+            )
+            file_exists = matrix_csv.exists() and matrix_csv.stat().st_size > 0
 
-        with open(OUTPUT_DIR / "matrix_powers.pkl", "wb") as f:
-            pickle.dump(raw_results, f)
+            pkl_path = OUTPUT_DIR / "matrix_powers.pkl"
+            raw_results = []
+            if pkl_path.exists():
+                with open(pkl_path, "rb") as f:
+                    try:
+                        raw_results = pickle.load(f)
+                    except Exception:
+                        raw_results = []
+
+            with mp.Pool(cores) as pool:
+                with open(matrix_csv, "a") as f:
+                    if not file_exists:
+                        f.write("N,v,beta,T,i0,eps,J_v,J_beta,time_v,time_beta\n")
+                        f.flush()
+                    for (
+                        (N, v, beta, T, i0, eps),
+                        J_v,
+                        J_beta,
+                        time_v,
+                        time_beta,
+                    ) in pool.imap_unordered(matrix_power_worker, param_combos):
+                        raw_results.append(
+                            (
+                                (N, v, beta, T, i0, eps),
+                                (J_v, J_beta, time_v, time_beta),
+                            )
+                        )
+                        f.write(
+                            f'{N},{v},{beta},{T},{i0},{eps},"{J_v}","{J_beta}",{time_v:.6f},{time_beta:.6f}\n'
+                        )
+                        f.flush()
+
+            with open(pkl_path, "wb") as f:
+                pickle.dump(raw_results, f)
+        else:
+            print(
+                "[matrix_power_gradients.csv] All tasks already completed. Skipping."
+            )
 
     # 2. Run Simulation Experiments
     targets = load_targets(matrix_csv)
@@ -344,34 +409,61 @@ if __name__ == "__main__":
     with mp.Pool(cores) as pool:
         # Finite Difference Evaluation
         if COMPUTE_FD:
-            fd_tasks = [
-                (
-                    t["N"],
-                    t["v"],
-                    t["beta"],
-                    t["T"],
-                    t["i0"],
-                    eps,
-                    n_macro,
-                    n_micro,
-                    t["J_v"],
-                    t["J_beta"],
-                )
-                for t in targets
-                for eps in fd_eps
-            ]
+            output_csv = OUTPUT_DIR / "fd_estimators_results.csv"
+            key_cols = ["N", "v", "beta", "T", "i0", "eps"]
+            completed_keys = load_completed_keys(output_csv, key_cols)
 
-            with open(OUTPUT_DIR / "fd_estimators_results.csv", "w") as f:
-                f.write(
-                    "N,v,beta,T,i0,eps,mean_v,mean_beta,sd_v,sd_beta,mse_v,mse_beta,time_v,time_beta\n"
-                )
-                for r in pool.imap_unordered(fd_worker, fd_tasks):
-                    f.write(
-                        f"{r[0]},{r[1]},{r[2]},{r[3]},{r[4]},{r[5]:.6f},"
-                        f"{r[6]:.6f},{r[7]:.6f},{r[8]:.6f},{r[9]:.6f},"
-                        f"{r[10]:.6e},{r[11]:.6e},{r[12]:.6f},{r[13]:.6f}\n"
+            fd_tasks = []
+            for t in targets:
+                for eps in fd_eps:
+                    task_key = (
+                        t["N"],
+                        round(t["v"], 6),
+                        round(t["beta"], 6),
+                        t["T"],
+                        t["i0"],
+                        round(eps, 6),
                     )
-                    f.flush()
+                    if task_key not in completed_keys:
+                        fd_tasks.append(
+                            (
+                                t["N"],
+                                t["v"],
+                                t["beta"],
+                                t["T"],
+                                t["i0"],
+                                eps,
+                                n_macro,
+                                n_micro,
+                                t["J_v"],
+                                t["J_beta"],
+                            )
+                        )
+
+            if fd_tasks:
+                print(
+                    f"[fd_estimators_results.csv] Running {len(fd_tasks)} remaining tasks..."
+                )
+                file_exists = (
+                    output_csv.exists() and output_csv.stat().st_size > 0
+                )
+                with open(output_csv, "a") as f:
+                    if not file_exists:
+                        f.write(
+                            "N,v,beta,T,i0,eps,mean_v,mean_beta,sd_v,sd_beta,mse_v,mse_beta,time_v,time_beta\n"
+                        )
+                        f.flush()
+                    for r in pool.imap_unordered(fd_worker, fd_tasks):
+                        f.write(
+                            f"{r[0]},{r[1]},{r[2]},{r[3]},{r[4]},{r[5]:.6f},"
+                            f"{r[6]:.6f},{r[7]:.6f},{r[8]:.6f},{r[9]:.6f},"
+                            f"{r[10]:.6e},{r[11]:.6e},{r[12]:.6f},{r[13]:.6f}\n"
+                        )
+                        f.flush()
+            else:
+                print(
+                    "[fd_estimators_results.csv] All tasks already completed. Skipping."
+                )
 
         # Weak Derivatives
         if COMPUTE_WD:
