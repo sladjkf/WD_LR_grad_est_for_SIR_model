@@ -48,7 +48,11 @@ def tSIR_LR_beta_path(N, v, i0, beta, T, pop_seed, dyn_seed):
 
     return traj[:, 1], step_scores
 
-def tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed):
+def tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed, v_g=None):
+    # If no proposal parameter is passed, default to standard sampling (g = f)
+    if v_g is None:
+        v_g = v
+
     pop_rng = np.random.default_rng(pop_seed)
     dyn_rng = np.random.default_rng(dyn_seed)
 
@@ -56,8 +60,8 @@ def tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed):
     N_minus_i0 = N - i0
     assert N_minus_i0 > 0
     
-    # Binomial initial condition
-    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
+    # 1. Sample initial vaccinated count V under the proposal distribution g ~ Binom(N_minus_i0, v_g)
+    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v_g)
     S = N_minus_i0 - V
     traj_shape = (T + 1, 3)
     traj = np.empty(traj_shape, dtype=int)
@@ -68,9 +72,19 @@ def tSIR_LR_v(N, v, i0, beta, T, pop_seed, dyn_seed):
         next_state = step_one(traj[i], next_I)
         traj[i + 1] = next_state
 
-    return traj, (V / v) - (N_minus_i0-V)/(1-v)
+    # 2. Compute the score function d/dv log f(V; v)
+    score = (V / v) - (N_minus_i0 - V) / (1 - v)
+
+    # 3. Compute IS weight f(V; v) / g(V; v_g) in log-space to prevent underflow/overflow
+    log_weight = V * np.log(v / v_g) + (N_minus_i0 - V) * np.log((1 - v) / (1 - v_g))
+    is_weight = np.exp(log_weight)
+
+    # 4. Final LR factor = (f'/f) * (f/g) = f'/g
+    lr_factor = score * is_weight
+
+    return traj, lr_factor
         
-def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
+def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed, fix_V = None):
     """
     Simulate a path of the SIR model.
 
@@ -111,7 +125,12 @@ def tSIR_WD_CRN(N, v, i0, beta, T, pop_seed, dyn_seed):
     assert N_minus_i0 > 0
     
     # Binomial initial condition
-    V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
+    if fix_V is None:
+        V = stats.binom.ppf(q=pop_U, n=N_minus_i0, p=v)
+    else:
+        assert type(fix_V) == int
+        assert 0 <= fix_V <= N_minus_i0
+        V = fix_V
     V_minus = stats.binom.ppf(q=pop_U, n=N_minus_i0 - 1, p=v)
     V_plus = 1 + V_minus 
     
@@ -808,30 +827,6 @@ def grad_wrt_beta(trajectories, score_samples, T, N_samples, avg=True):
 
 #def grad_wrt_beta_wd()
 
-
-# Calculation of the distribution of the number infected
-# via a matrix-powers approach
-
-def transition_prob(s_from, i_from, s_to, i_to, beta, N):
-    """
-    Helper function that returns the transition probability
-    and used for filling out the transition matrix in 
-    the function inf_via_matrix_powers_tSIR.
-    """
-    both_positive = s_from > 0 and i_from > 0
-    if s_to == 0 and i_to == s_from and both_positive:
-        r = i_from 
-        mu = beta * s_from * i_from / N
-        p = r / (r + mu)
-        return stats.nbinom.sf(s_from - 1, p = p, n=r)
-        #return 1 - sum(y_pmf(j, (s_from, i_from), beta, N) for j in range(s_from))
-    elif s_to == s_from - i_to and i_to < s_from and both_positive:
-        return y_pmf(i_to, (s_from, i_from), beta, N)
-    elif (not both_positive) and s_from == s_to and i_to == 0:
-        return 1.0
-    else:
-        return 0.0
-
 # def inf_via_matrix_powers_tSIR(N, v, i0, beta, T):
 #     """
 #     Calculate the number of expected infections at each time
@@ -877,6 +872,29 @@ def transition_prob(s_from, i_from, s_to, i_to, beta, N):
 #         last_state = last_state @ P_matrix
     
 #     return np.array(I_expect)
+
+# Calculation of the distribution of the number infected
+# via a matrix-powers approach
+
+def transition_prob(s_from, i_from, s_to, i_to, beta, N):
+    """
+    Helper function that returns the transition probability
+    and used for filling out the transition matrix in 
+    the function inf_via_matrix_powers_tSIR.
+    """
+    both_positive = s_from > 0 and i_from > 0
+    if s_to == 0 and i_to == s_from and both_positive:
+        r = i_from 
+        mu = beta * s_from * i_from / N
+        p = r / (r + mu)
+        return stats.nbinom.sf(s_from - 1, p = p, n=r)
+        #return 1 - sum(y_pmf(j, (s_from, i_from), beta, N) for j in range(s_from))
+    elif s_to == s_from - i_to and i_to < s_from and both_positive:
+        return y_pmf(i_to, (s_from, i_from), beta, N)
+    elif (not both_positive) and s_from == s_to and i_to == 0:
+        return 1.0
+    else:
+        return 0.0
 
 def inf_via_matrix_powers_tSIR(N, v, i0, beta, T):
     # 1. Map state tuple to array index
